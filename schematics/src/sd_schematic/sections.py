@@ -428,6 +428,42 @@ SCAN = {
     "dpi": 400,
     "size_px": (6720, 4336),      # landscape, after the page's /Rotate 270
     "y_down": True,
+    # One fixed scale for scan placement, rather than fitting each block to its
+    # page. Symbol sizes are chosen in millimetres, so the mapping from scan
+    # pixels has to be known in advance or the two disagree -- which is what
+    # left the function blocks three times too small for the wires drawn round
+    # them. At 0.2 a resistor on the drawing comes out near our 15 mm symbol.
+    "mm_per_px": 0.2,
+}
+
+# Which side of a function block each pin comes out of. Same lesson as ROLES:
+# putting every numbered pin on the left because it is numbered is a positional
+# guess, and it puts PWM's two outputs on its input side, so the traced wires
+# have to detour round the box to reach them. The nets say which is which --
+# PWM.1 comes from U9A, PWM.3 goes to R73.
+BLOCK_SIDES = {
+    "PWM":     {"left": ["1", "2"], "right": ["3", "4"]},
+    "LOCKOUT": {"left": ["1", "2", "5", "6"], "right": ["3", "4"]},
+    "CLOCK":   {"left": [], "right": ["1"]},
+    "DRIVER1": {"left": ["1"], "right": ["2", "3", "4"]},
+    "DRIVER2": {"left": ["1"], "right": ["2", "3", "4"]},
+}
+
+# How big a part is drawn on the sheet, in scan pixels. Only the kinds whose
+# symbol has no natural size need it: the named function blocks, the drivers
+# and the transformers. A resistor is a resistor at any scale.
+#
+# Without this the traced wires -- drawn to meet the original's boxes -- run
+# past our smaller ones and reach them by a long detour, which is what made
+# sheet 8 look like wires with boxes parked beside them.
+EXTENTS = {
+    "PWM":     (249, 223),
+    "LOCKOUT": (288, 234),
+    "CLOCK":   (163, 134),
+    "DRIVER1": (69, 183),
+    "DRIVER2": (69, 183),
+    "T3":      (100, 183),
+    "T4":      (100, 183),
 }
 
 # refdes -> (x_px, y_px) or (x_px, y_px, rotation).

@@ -89,6 +89,8 @@ class TrunkRouter:
         self.row_height = row_height
         self.col_width = col_width
         self.declined = []
+        #: Space already taken by another router, honoured if set.
+        self.preoccupied = {}
 
     # -- geometry helpers --------------------------------------------------
     def _row_of(self, y):
@@ -184,7 +186,9 @@ class TrunkRouter:
         warnings = []
         self.declined = []
         channels = {}          # (sheet, row) -> [ (track_y, [(x1, x2), ...]) ]
-        occupancy = {}         # sheet -> ({y: spans}, {x: spans})
+        occupancy = {sheet: ({k: list(v) for k, v in axes[0].items()},
+                             {k: list(v) for k, v in axes[1].items()})
+                     for sheet, axes in self.preoccupied.items()}
         self._reserve_escapes(design, placement, sym_of, occupancy)
 
         for name, pinrefs in design.nets.items():
@@ -422,19 +426,38 @@ class ScanRouter:
         self.from_scan = []
 
     def route(self, design, placement, sym_of):
-        routed, warnings = self.fallback.route(design, placement, sym_of)
-        self.declined = list(getattr(self.fallback, "declined", []))
+        # Draw the transcribed nets first and book the space they take, so the
+        # fallback routes around them rather than through them.
+        occupancy = {}
+        drawn = {}
+        warnings = []
         self.from_scan = []
 
-        for name, runs in self.wires.items():
+        for name in sorted(self.wires):
             if name not in design.nets or name in self.supply_rails:
                 continue
-            segment = self._draw(name, runs, design, placement, sym_of, warnings)
-            if segment is not None:
-                routed[name] = [segment]
-                self.from_scan.append(name)
-                if name in self.declined:
-                    self.declined.remove(name)
+            segment = self._draw(name, self.wires[name], design, placement,
+                                 sym_of, warnings)
+            if segment is None:
+                continue
+            seen = occupancy.setdefault(segment.sheet, ({}, {}))
+            if self.fallback._would_overlap(segment, seen):
+                # The same rule the trunk router lives by: a wire lying along
+                # another shows a connection the netlist does not have, and a
+                # reader cannot tell it from a real one. Decline and label it.
+                warnings.append("%s: transcribed run would lie along another net; "
+                                "left as labels" % name)
+                continue
+            self.fallback._occupy(segment, seen, owner=("scan", name))
+            drawn[name] = [segment]
+            self.from_scan.append(name)
+
+        self.fallback.preoccupied = occupancy
+        routed, more = self.fallback.route(design, placement, sym_of)
+        warnings.extend(more)
+        self.declined = [n for n in getattr(self.fallback, "declined", [])
+                         if n not in drawn]
+        routed.update(drawn)
         return routed, warnings
 
     def _draw(self, name, runs, design, placement, sym_of, warnings):

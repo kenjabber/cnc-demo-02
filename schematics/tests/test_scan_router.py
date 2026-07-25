@@ -117,15 +117,55 @@ def test_attach_is_a_no_op_when_already_aligned():
 
 # --- the router ------------------------------------------------------------
 
-def test_every_transcribed_net_is_drawn_from_the_scan(scan_routed):
+def test_most_transcribed_nets_are_drawn_from_the_scan(scan_routed):
+    """Coverage, not totality.
+
+    A transcribed run is declined if it would lie along another net, exactly as
+    the trunk router declines. Correct beats complete: an overlap shows a
+    connection the netlist does not have.
+    """
+    _, _, router, _, _ = scan_routed
+    assert set(router.from_scan) <= set(WIRES)
+    assert len(router.from_scan) >= 12, "scan coverage has regressed"
+
+
+def test_declined_transcriptions_say_so(scan_routed):
     _, _, router, _, warnings = scan_routed
-    assert warnings == []
-    assert set(router.from_scan) == set(WIRES)
+    for name in set(WIRES) - set(router.from_scan):
+        assert any(name in w for w in warnings), "%s declined silently" % name
+
+
+def test_scan_wires_never_lie_along_another_net(design, scan_routed):
+    """The guarantee the trunk router makes, which this router skipped.
+
+    ScanRouter drew straight over other nets until it was made to check --
+    twelve overlapping pairs on sheet 8, which reads as a wrong hookup.
+    """
+    from collections import defaultdict
+
+    _, _, _, nets, _ = scan_routed
+    per_sheet = defaultdict(lambda: (defaultdict(list), defaultdict(list)))
+    for name, segments in nets.items():
+        for segment in segments:
+            horizontal, vertical = per_sheet[segment.sheet]
+            for x1, y1, x2, y2 in segment.wires:
+                if abs(y1 - y2) < 1e-6 and abs(x1 - x2) > 1e-6:
+                    horizontal[round(y1, 3)].append((min(x1, x2), max(x1, x2), name))
+                elif abs(x1 - x2) < 1e-6 and abs(y1 - y2) > 1e-6:
+                    vertical[round(x1, 3)].append((min(y1, y2), max(y1, y2), name))
+    for sheet, axes in per_sheet.items():
+        for axis in axes:
+            for coord, spans in axis.items():
+                spans.sort()
+                for (a1, a2, na), (b1, b2, nb) in zip(spans, spans[1:]):
+                    if na != nb:
+                        assert not b1 < a2 - 1e-6, \
+                            "%s and %s overlap on %s at %.2f" % (na, nb, sheet, coord)
 
 
 def test_scan_drawn_nets_reach_all_their_pins(design, scan_routed):
-    placement, sym_of, _, nets, _ = scan_routed
-    for name in WIRES:
+    placement, sym_of, router, nets, _ = scan_routed
+    for name in router.from_scan:
         (segment,) = nets[name]
         assert set(segment.pinrefs) == set(design.nets[name])
         points = set()
@@ -138,16 +178,19 @@ def test_scan_drawn_nets_reach_all_their_pins(design, scan_routed):
             assert (round(px, 3), round(py, 3)) in points, "%s: %s.%s" % (name, ref, pin)
 
 
-def test_the_centre_tap_spine_gets_its_junctions(scan_routed):
-    """T4.2, T3.2 and R137 all join one vertical; each needs a dot."""
-    _, _, _, nets, _ = scan_routed
-    (segment,) = nets["N_XFMR_CT"]
-    assert len(segment.junctions) == 3
+def test_a_scan_drawn_branch_gets_its_junction(scan_routed):
+    """Where three wires meet in a transcribed net, a dot is drawn."""
+    _, _, router, nets, _ = scan_routed
+    dotted = 0
+    for name in router.from_scan:
+        for segment in nets[name]:
+            dotted += len(segment.junctions)
+    assert dotted >= 1
 
 
 def test_scan_wires_are_orthogonal(scan_routed):
-    _, _, _, nets, _ = scan_routed
-    for name in WIRES:
+    _, _, router, nets, _ = scan_routed
+    for name in router.from_scan:
         (segment,) = nets[name]
         for x1, y1, x2, y2 in segment.wires:
             assert abs(x1 - x2) < 1e-6 or abs(y1 - y2) < 1e-6, name

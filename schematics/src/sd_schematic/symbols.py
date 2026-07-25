@@ -181,6 +181,11 @@ def make_symbol(kind, pins, roles=None):
         # the same mistake positional roles were.
         groups = (roles or {}).get("windings") or [list(pins)]
         pitch = 2.54
+        extent = (roles or {}).get("extent")
+        if extent:
+            tallest = max(len(g) for g in groups)
+            if tallest > 1:
+                pitch = max(pitch, extent[1] / (tallest * len(groups)))
         height = max((len(g) - 1) * pitch for g in groups) or pitch
         body.append(wire(-0.635, height / 2 + 1.27, -0.635, -height / 2 - 1.27))
         body.append(wire(0.635, height / 2 + 1.27, 0.635, -height / 2 - 1.27))
@@ -210,19 +215,38 @@ def make_symbol(kind, pins, roles=None):
         # The drawing names these rather than drawing them out: PULSE WIDTH
         # MODULATOR, LOCK-OUT CIRCUIT, CLOCK. Keep that, but put the name
         # inside the box the way the original does.
-        named = [p for p in pins if not p.isdigit()]
-        numbered = [p for p in pins if p.isdigit()]
-        left = [p for p in named if p.upper().startswith("IN")] + numbered
-        right = [p for p in named if p.upper().startswith("OUT")]
+        sides = (roles or {}).get("sides")
+        if sides:
+            left = [p for p in sides.get("left", []) if p in pins]
+            right = [p for p in sides.get("right", []) if p in pins]
+            rest = [p for p in pins if p not in left and p not in right]
+            left += rest
+        else:
+            named = [p for p in pins if not p.isdigit()]
+            numbered = [p for p in pins if p.isdigit()]
+            left = [p for p in named if p.upper().startswith("IN")] + numbered
+            right = [p for p in named if p.upper().startswith("OUT")]
         rows = max(len(left), len(right), 2)
         h = rows * 2.54 + 5.08
         w = 25.4
-        top = h / 2 - 3.81
+        extent = (roles or {}).get("extent")
+        if extent:
+            # Drawn size wins, so the traced wires meet the box instead of
+            # detouring round it. Never shrink below what the pins need.
+            w = max(w, extent[0])
+            h = max(h, extent[1])
+        # Spread the pins down the taller box rather than bunching them at the
+        # top, so a traced wire meets the pin it was drawn to.
+        pitch = 2.54
+        if extent and rows > 1:
+            pitch = max(2.54, round((h - 7.62) / (rows - 1) / 2.54) * 2.54)
         body.append(rect(-w / 2, -h / 2, w / 2, h / 2))
-        for i, pn in enumerate(left):
-            out.append((pn, -w / 2 - PIN_STUB, top - i * 2.54, "R0", DIR_IN))
-        for i, pn in enumerate(right):
-            out.append((pn, w / 2 + PIN_STUB, top - i * 2.54, "R180", DIR_OUT))
+        for side, names, x, direction in ((0, left, -w / 2 - PIN_STUB, DIR_IN),
+                                          (1, right, w / 2 + PIN_STUB, DIR_OUT)):
+            top = (len(names) - 1) * pitch / 2.0
+            for i, pn in enumerate(names):
+                out.append((pn, x, top - i * pitch, "R0" if side == 0 else "R180",
+                            direction))
 
     elif kind == "TP":
         out = [(pins[0], -7.62, 0.0, "R0", DIR_PAS)]
@@ -258,6 +282,8 @@ def signature(part):
     roles are different symbols, and must not be collapsed into one.
     """
     def freeze(value):
+        if isinstance(value, dict):
+            return tuple(sorted((k, freeze(v)) for k, v in value.items()))
         if isinstance(value, (list, tuple)):
             return tuple(freeze(v) for v in value)
         return value
@@ -267,19 +293,28 @@ def signature(part):
             tuple(sorted((k, freeze(v)) for k, v in roles.items())))
 
 
-def build_symbol_library(parts):
+def build_symbol_library(parts, drawn_extents=False):
     """Return ``(symbols, sym_of)``.
 
     ``symbols`` maps signature -> symbol dict; ``sym_of`` maps refdes -> that
     same dict, so a part can find its geometry in one lookup.
+
+    ``drawn_extents`` sizes the variable-size kinds to how big the original
+    draws them. That is right when parts sit where the scan puts them and the
+    wires between them were traced; on the auto-placed layouts it just makes
+    the blocks too big for the grid, so it is off by default.
     """
     symbols = OrderedDict()
     sym_of = {}
     kind_count = defaultdict(int)
     for ref, p in parts.items():
-        key = signature(p)
+        roles = p.get("roles") or {}
+        if not drawn_extents and "extent" in roles:
+            roles = {k: v for k, v in roles.items() if k != "extent"}
+        keyed = dict(p, roles=roles)
+        key = signature(keyed)
         if key not in symbols:
-            pinlist, body = make_symbol(p["kind"], p["pins"], p.get("roles"))
+            pinlist, body = make_symbol(p["kind"], p["pins"], roles)
             kind_count[p["kind"]] += 1
             name = "%s_%d" % (p["kind"], kind_count[p["kind"]])
             symbols[key] = {"name": name, "pins": pinlist, "body": body,

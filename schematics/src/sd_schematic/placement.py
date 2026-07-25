@@ -135,6 +135,8 @@ class GridPlacer:
     diffed against.
     """
 
+    drawn_extents = False
+
     def place(self, design):
         placement = Placement()
         sheet = placement.add_sheet(MAIN_SHEET)
@@ -164,6 +166,8 @@ class SheetPlacer:
     """
 
     serpentine = False
+    #: Size the variable-size symbols to how big the drawing makes them.
+    drawn_extents = False
 
     def order(self, design, refs, sheet_key):
         """Return ``refs`` in the order they should fill the grid.
@@ -347,6 +351,8 @@ class ScanPlacer(SheetPlacer):
     the long horizontal buses, cannot survive the split into nine sheets; the
     scan is still the reference for those.
     """
+
+    drawn_extents = True
 
     def __init__(self, positions=None, fallback=None, area=SCAN_AREA):
         from .sections import POSITIONS

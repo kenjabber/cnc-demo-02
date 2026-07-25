@@ -148,7 +148,8 @@ def render(design, placer=None, router=None):
     placer = placer or ClusterPlacer(supply_rails=SUPPLY_RAILS)
     router = router or TrunkRouter(supply_rails=SUPPLY_RAILS)
 
-    symbols, sym_of = build_symbol_library(design.parts)
+    symbols, sym_of = build_symbol_library(
+        design.parts, drawn_extents=getattr(placer, "drawn_extents", False))
     placement = placer.place(design)
     routed, warnings = router.route(design, placement, sym_of)
     supply_names, supply_instances = name_supplies(routed)
