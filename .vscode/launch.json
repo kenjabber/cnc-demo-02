@@ -7,7 +7,7 @@
             "request": "launch",
             "module": "sd_schematic",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/schematics",
             "python": "${workspaceFolder}/.venv/bin/python",
             "console": "integratedTerminal",
             "justMyCode": true
@@ -20,7 +20,7 @@
             "args": [
                 "build"
             ],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/schematics",
             "python": "${workspaceFolder}/.venv/bin/python",
             "console": "integratedTerminal",
             "justMyCode": true
@@ -33,7 +33,7 @@
             "args": [
                 "validate"
             ],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/schematics",
             "python": "${workspaceFolder}/.venv/bin/python",
             "console": "integratedTerminal",
             "justMyCode": true

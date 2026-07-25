@@ -13,8 +13,8 @@ from .validate import validate_file, validate_string
 SCH_NAME = "SD1015_SD1525_sheet2.sch"
 NETLIST_NAME = "netlist.csv"
 
-# Repo root is three levels up from this file: src/sd_schematic/cli.py
-DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / "schematics"
+# This file is schematics/src/sd_schematic/cli.py, so parents[2] is schematics/.
+DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / "output"
 
 
 def build(out_dir):

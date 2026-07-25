@@ -3,17 +3,18 @@
 Converted from **ServoDynamics_1525.pdf page 30**, Servo Dynamics drawing **1202 rev A,
 sheet 2 of 2**, "SIMPLIFIED SCHEMATIC", drawn by Tong Tran 12-85.
 
-This directory holds the **generated** output. The generator lives in
-`src/sd_schematic/`; see the [repo README](../README.md) for setup.
+See the [repo README](../README.md) for setup; everything below assumes the venv
+is installed.
 
 | file | what it is |
 |---|---|
-| `SD1015_SD1525_sheet2.sch` | EAGLE-XML schematic — open directly in Fusion Electronics |
-| `netlist.csv` | flat netlist (net name, pin count, connections) for cross-checking |
-| `../src/sd_schematic/sections.py` | the transcribed source data, with audit notes inline |
-| `../src/sd_schematic/model.py` | merges the nine sections into one part and net list |
-| `../src/sd_schematic/eagle.py` | emits the `.sch` |
-| `../src/sd_schematic/validate.py` | structural checker (run after any edit) |
+| `output/SD1015_SD1525_sheet2.sch` | EAGLE-XML schematic — open directly in Fusion Electronics |
+| `output/netlist.csv` | flat netlist (net name, pin count, connections) for cross-checking |
+| `src/sd_schematic/sections.py` | the transcribed source data, with audit notes inline |
+| `src/sd_schematic/model.py` | merges the nine sections into one part and net list |
+| `src/sd_schematic/eagle.py` | emits the `.sch` |
+| `src/sd_schematic/validate.py` | structural checker (run after any edit) |
+| `test-data/expected_netlist.csv` | golden netlist the suite checks the merge against |
 
 **263 parts · 165 nets · 627 pin connections.**
 
@@ -108,12 +109,21 @@ generator and the structural checker will pick it up. Validation verifies that
 every net wire lands exactly on its pin, every pin belongs to exactly one net,
 and every part resolves to a symbol.
 
-Then run the tests — several of them pin the totals (263 parts, 165 nets, 627
-pin connections) and the seven known dangling pins, so a deliberate change to
-`sections.py` means updating those expectations too:
+Then run the tests:
 
 ```bash
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest schematics
+```
+
+Several of them pin the totals (263 parts, 165 nets, 627 pin connections) and
+the seven known dangling pins, and `test_regression.py` diffs the whole netlist
+against `test-data/expected_netlist.csv`. A deliberate change to `sections.py`
+means updating those expectations in the same commit, so the change to the
+circuit is visible in review:
+
+```bash
+.venv/bin/python -m sd_schematic build
+cp schematics/output/netlist.csv schematics/test-data/expected_netlist.csv
 ```
 
 The output is reproducible: the same `sections.py` always produces the same
