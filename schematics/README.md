@@ -16,7 +16,7 @@ is installed.
 | `src/sd_schematic/validate.py` | structural checker (run after any edit) |
 | `test-data/expected_netlist.csv` | golden netlist the suite checks the merge against |
 
-**263 parts · 165 nets · 627 pin connections.**
+**263 parts · 166 nets · 627 pin connections.**
 
 ## Opening it
 
@@ -49,6 +49,25 @@ reference designators only. The `value` field instead carries the part kind plus
 any note.
 
 ## Corrected during audit
+
+### C8 — the −15 V rail was shorted to ground
+
+`C8` was transcribed with its plates the other way round in `S1_input` than in
+`S4_comp`. Because the merge is union-find over shared pins, those two readings
+tied `N15` and `GND` into a single node: the −15 V rail vanished, and all 16 of
+its pins — `U1B.4`, `U8B.4`, `U9A.4`, `J1.12`, `J4.3`, `D44.1`, the `R118`/`R119`
+±15 V adjust divider — were reported as ground. `GND` was 84 pins because it had
+swallowed a supply.
+
+`S4_comp` is the correct reading. C8 is drawn with its "+" on the grounded plate,
+which is right for a decoupler on a *negative* rail, and pin 1 is the "+" plate.
+`S1_input` is corrected to match. `GND` is now 68 pins and `N15` exists.
+
+`build_nets` now raises `ShortedRailsError` if any two names in `GLOBAL_ORDER`
+ever merge again, because the failure mode is silent — the smaller rail just
+disappears.
+
+### The ECC node
 
 My first merge tied ten points together as one "ECC" node. Re-tracing at high
 zoom showed the vertical carrying TP7 (x≈1803) *crosses* the U9 pin-7 output run
@@ -115,7 +134,7 @@ Then run the tests:
 .venv/bin/python -m pytest schematics
 ```
 
-Several of them pin the totals (263 parts, 165 nets, 627 pin connections) and
+Several of them pin the totals (263 parts, 166 nets, 627 pin connections) and
 the seven known dangling pins, and `test_regression.py` diffs the whole netlist
 against `test-data/expected_netlist.csv`. A deliberate change to `sections.py`
 means updating those expectations in the same commit, so the change to the

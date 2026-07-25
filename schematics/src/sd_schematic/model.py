@@ -135,6 +135,26 @@ def net_name(names):
     return real[0] if real else sorted(names)[0]
 
 
+class ShortedRailsError(Exception):
+    """Two supply rails merged into one node — the transcription contradicts itself."""
+
+
+def _check_rails_distinct(groups):
+    """The names in GLOBAL_ORDER are separate rails and must stay separate.
+
+    They merge when one pin is transcribed onto different rails in two
+    sections, and the result is silent: the smaller rail simply disappears
+    into the larger one. That is how the -15 V rail was lost to GND for a
+    while — see the C8 audit note in sections.py. Fail the build instead.
+    """
+    for g in groups.values():
+        rails = sorted(set(g["names"]) & set(GLOBAL_ORDER))
+        if len(rails) > 1:
+            raise ShortedRailsError(
+                "%s merged into one node. A pin is transcribed onto two "
+                "different rails; check the pins these nets share." % " + ".join(rails))
+
+
 def build_nets(sections, parts):
     """Merge the per-section nets. Mutates ``parts`` to add pins seen only here.
 
@@ -166,6 +186,8 @@ def build_nets(sections, parts):
                 g["pins"].add(c)
             else:
                 g["names"].add(c)
+
+    _check_rails_distinct(groups)
 
     nets = OrderedDict()
     warnings = []

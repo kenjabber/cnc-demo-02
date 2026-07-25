@@ -1,7 +1,10 @@
 """The merge: parts collected, cross-section nets stitched, parts placed."""
 
+import pytest
+
 from sd_schematic.model import (
     PER_ROW,
+    ShortedRailsError,
     build_design,
     build_nets,
     build_parts,
@@ -12,7 +15,7 @@ from sd_schematic.model import (
 # Totals for the sheet as transcribed. They move only when sections.py changes,
 # and when they do the change should be a deliberate one.
 EXPECTED_PARTS = 263
-EXPECTED_NETS = 165
+EXPECTED_NETS = 166
 EXPECTED_PIN_CONNECTIONS = 627
 
 
@@ -38,6 +41,35 @@ def test_ground_is_stitched_across_sections(design):
     sections = {design.parts[ref]["section"] for ref, _ in gnd}
     assert len(sections) > 5
     assert len(gnd) > 50
+
+
+def test_supply_rails_stay_distinct(design):
+    """GND, P15 and N15 are separate nodes.
+
+    C8 was once transcribed with its plates swapped between S1_input and
+    S4_comp, which merged N15 into GND and silently deleted the -15 V rail --
+    all 16 of its pins reported as ground. build_nets now refuses to build a
+    design where two rails merge; this pins the outcome.
+    """
+    for rail in ("GND", "P15", "N15"):
+        assert rail in design.nets, "%s is missing -- merged into another rail?" % rail
+    assert len(design.nets["N15"]) == 16
+    assert ("U1B", "4") in design.nets["N15"]
+    assert ("C8", "2") in design.nets["N15"]
+    assert ("C8", "1") in design.nets["GND"]
+
+
+def test_merging_two_rails_is_an_error():
+    """The guard fires rather than silently swallowing a rail."""
+    sections = {
+        "A": {"parts": [("C1", "CPOL", None), ("U1", "IC", ["4", "8"])],
+              "nets": [("N15", ["U1.4", "C1.1"]), ("GND", ["C1.2"])]},
+        "B": {"parts": [],
+              "nets": [("N15", ["C1.2"]), ("GND", ["C1.1"])]},
+    }
+    parts = build_parts(sections, extra_parts=[])
+    with pytest.raises(ShortedRailsError, match="GND \\+ N15"):
+        build_nets(sections, parts)
 
 
 def test_chassis_merges_two_sections(design):

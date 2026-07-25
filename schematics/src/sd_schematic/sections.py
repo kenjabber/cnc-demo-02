@@ -42,10 +42,17 @@ SECTIONS["S1_input"] = {
   ("N_SUM",["R34.2","R33.2","R35.2","R37.2","U1B.6","R57.1"]),
   ("N_BAL_INJ",["R57.2","R58.1","R59B.1"]),
   ("P15",["U1B.8","C9.1"]),
-  ("N15",["U1B.4","C8.1"]),
+  # AUDIT: C8 was transcribed here with its plates the other way round -
+  # C8.1 on N15 and C8.2 on GND - while S4_comp reads C8.1 on GND and C8.2 on
+  # N15. Since the two sections share both pins, the merge tied N15 and GND
+  # into one node and the whole -15 V rail (17 pins) vanished into GND.
+  # S4_comp is the correct reading: C8 is drawn with its "+" on the grounded
+  # plate, which is right for a decoupler on a negative rail, and pin 1 is the
+  # "+" plate. Corrected here to match.
+  ("N15",["U1B.4","C8.2"]),
   ("CHASSIS",["R36.2"]),
   ("GND",["C2.2","C3.2","R6.2","C4.2","C5.2","R28.3","R27.3","R29.3","U1B.5","C9.2",
-          "C8.2","R58.2","R59B.2","J1.4","C7.2","C1.2","C17.2","TP1.1","R36.1"]),
+          "C8.1","R58.2","R59B.2","J1.4","C7.2","C1.2","C17.2","TP1.1","R36.1"]),
  ],
 }
 
