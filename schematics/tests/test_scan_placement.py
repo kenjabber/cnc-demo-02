@@ -202,3 +202,43 @@ def test_a_series_part_with_one_traced_end_lands_on_it(design):
         for x1, y1, x2, y2 in segment.wires:
             ends |= {(round(x1, 3), round(y1, 3)), (round(x2, 3), round(y2, 3))}
     assert (round(px, 3), round(py, 3)) in ends
+
+
+def test_no_part_falls_outside_its_sheet(design):
+    """S9_output is 400 mm tall at the scan scale and does not fit on A3.
+
+    The sheet is sized to the block rather than the block squeezed onto a
+    fixed sheet -- J5, C51, RGF and FGF were off the page.
+    """
+    placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
+    for sheet in placement.sheets:
+        if sheet.key not in placement.scan_transform:
+            continue
+        _, _, width, height, _, _ = sheet.frame
+        for ref in placement.refs_on(sheet.key):
+            x, y = placement.coords[ref]
+            assert 0 < x < width and 0 < y < height, \
+                "%s at (%.1f, %.1f) is off %s (%.1f x %.1f)" % (
+                    ref, x, y, sheet.key, width, height)
+
+
+def test_empty_space_between_bands_is_squeezed(design):
+    """Drawn at a scale where symbols match, the scan's blank regions become
+    acres of empty sheet. The arrangement is kept; the emptiness is not."""
+    placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
+    for sheet in placement.sheets:
+        if sheet.key not in placement.scan_transform:
+            continue
+        ys = sorted(placement.coords[r][1] for r in placement.refs_on(sheet.key))
+        gaps = [b - a for a, b in zip(ys, ys[1:])]
+        limit = ScanPlacer.MAX_GAP + 2 * ScanPlacer.BAND_PAD + 1.0
+        assert not [g for g in gaps if g > limit], \
+            "%s has a %.1f mm gap between rows" % (sheet.key, max(gaps))
+
+
+def test_squeezing_keeps_the_relative_arrangement(design):
+    """Compression must not reorder anything."""
+    placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
+    for a, b in (("J5", "C51"), ("C51", "R156"), ("R156", "Q14"), ("Q14", "RGF")):
+        assert POSITIONS[a][1] < POSITIONS[b][1]
+        assert placement.coords[a][1] > placement.coords[b][1], "%s..%s" % (a, b)

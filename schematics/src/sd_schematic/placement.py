@@ -367,6 +367,18 @@ class ScanPlacer(SheetPlacer):
         self.fallback = fallback or SheetPlacer()
         self.area = area
 
+    #: Clearance round a scan-placed block: pin stubs, rail symbols and labels
+    #: all sit outside the parts themselves.
+    SCAN_MARGIN = 38.0
+
+    #: Where a two-terminal symbol's pins sit, before rotation.
+    TWO_PIN_SPAN = 7.62
+
+    #: Half-height a part occupies, for deciding what counts as empty space.
+    BAND_PAD = 15.0
+    #: Empty space kept between one band of parts and the next.
+    MAX_GAP = 12.0
+
     def place(self, design):
         # Lay the wrapped strategy out first. A sheet with no usable scan data
         # then reuses its result verbatim, so "no coordinates yet" is exactly
@@ -375,29 +387,73 @@ class ScanPlacer(SheetPlacer):
 
         placement = Placement()
         assignment = sheet_assignment(design)
-        frame = (0.0, 0.0, FRAME_W, FRAME_H, FRAME_COLS, FRAME_ROWS)
+        default_frame = (0.0, 0.0, FRAME_W, FRAME_H, FRAME_COLS, FRAME_ROWS)
 
         for key in sheet_keys_in_order(assignment):
             title = SECTION_TITLE.get(key, key)
-            sheet = placement.add_sheet(key, title, frame)
-            sheet.text(SHEET_X0 - 12.7, TITLE_Y, "%s  --  %s" % (key, title), 3.048, 97)
-
             refs = [r for r, k in assignment.items() if k == key]
             known = sorted((r for r in refs if r in self.positions), key=natural_key)
 
             if len(known) < 2:
                 # One point defines no arrangement; do not pretend otherwise.
+                sheet = placement.add_sheet(key, title, default_frame)
+                sheet.text(SHEET_X0 - 12.7, TITLE_Y,
+                           "%s  --  %s" % (key, title), 3.048, 97)
                 for ref in auto.refs_on(key):
                     x, y = auto.coords[ref]
                     placement.put(ref, x, y, key, auto.rot.get(ref, "R0"))
                 continue
 
-            taken = set()
+            # One fixed scale, so a pin derived from the scan lands exactly on
+            # the wire drawn to it. The sheet is then sized to the block rather
+            # than the block squeezed onto a fixed sheet -- S9_output is 400 mm
+            # tall at this scale and simply does not fit on A3.
             from .sections import SCAN
 
-            convert = fit_box([self.positions[r][:2] for r in known], self.area,
-                              scale=SCAN.get("mm_per_px"))
+            scale = SCAN["mm_per_px"]
+            xs = [self.positions[r][0] for r in known]
+            ys = [self.positions[r][1] for r in known]
+            span_x = (max(xs) - min(xs)) * scale
+            span_y = (max(ys) - min(ys)) * scale
+            left, top = min(xs), min(ys)
+            margin = self.SCAN_MARGIN
+
+            def raw(px, py, left=left, top=top, span_y=span_y,
+                    scale=scale, margin=margin):
+                # Scan y counts downward, sheet y upward.
+                return (margin + (px - left) * scale,
+                        margin + span_y - (py - top) * scale)
+
+            placed = [raw(self.positions[r][0], self.positions[r][1]) for r in known]
+            squeeze_x = self._squeeze([p[0] for p in placed])
+            squeeze_y = self._squeeze([p[1] for p in placed])
+
+            def convert(px, py, raw=raw, sx=squeeze_x, sy=squeeze_y):
+                x, y = raw(px, py)
+                return (sx(x), sy(y))
+
+            span_x = max(sx for sx, _ in (convert(self.positions[r][0],
+                                                  self.positions[r][1])
+                                          for r in known))
+            span_y = max(sy for _, sy in (convert(self.positions[r][0],
+                                                  self.positions[r][1])
+                                          for r in known))
+            span_x -= margin
+            span_y -= margin
+
+            unknown = [r for r in auto.refs_on(key) if r not in self.positions]
+            rows_needed = (len(unknown) + SHEET_PER_ROW - 1) // SHEET_PER_ROW
+            width = max(span_x + 2 * margin, FRAME_W)
+            height = span_y + 2 * margin + rows_needed * SHEET_ROW_H
+
+            frame = (0.0, 0.0, width, height,
+                     max(2, int(width // 48)), max(2, int(height // 48)))
+            sheet = placement.add_sheet(key, title, frame)
+            sheet.text(margin - 12.7, height - 12.7,
+                       "%s  --  %s" % (key, title), 3.048, 97)
             placement.scan_transform[key] = convert
+
+            taken = set()
             for ref in known:
                 entry = self.positions[ref]
                 # Deliberately not snapped to the grid. A pin's position is
@@ -410,18 +466,15 @@ class ScanPlacer(SheetPlacer):
             self._centre_two_pin_parts(design, placement, known, convert)
             self._align_two_pin_parts(design, placement, known)
 
-            unknown = [r for r in auto.refs_on(key) if r not in self.positions]
             if unknown:
-                sheet.text(SHEET_X0 - 12.7, 60.96,
+                sheet.text(margin - 12.7, margin * 0.5,
                            "below: no scan position yet, auto-placed", 2.54, 97)
             for i, ref in enumerate(unknown):
                 col, row = i % SHEET_PER_ROW, i // SHEET_PER_ROW
-                x, y = self._free(SHEET_X0 + col * COL_W, 50.8 - row * SHEET_ROW_H, taken)
+                x, y = self._free(margin + col * COL_W,
+                                  margin * 0.75 - row * SHEET_ROW_H, taken)
                 placement.put(ref, x, y, key)
         return placement
-
-    #: Where a two-terminal symbol's pins sit, before rotation.
-    TWO_PIN_SPAN = 7.62
 
     def _align_two_pin_parts(self, design, placement, known):
         """Slide a series part onto the wire end the drawing gives it.
@@ -481,6 +534,47 @@ class ScanPlacer(SheetPlacer):
             if len(neighbours) == 2:
                 _, y = placement.coords[ref]
                 placement.coords[ref] = (sum(neighbours) / 2.0, y)
+
+    def _squeeze(self, values):
+        """Return a map that collapses empty runs between bands of parts.
+
+        The scan is 400 dpi, so drawing it at a scale where a resistor matches
+        our symbol is about three times life size. Distances between parts get
+        magnified with everything else, and the drawing's empty regions -- the
+        gap between J5 and the output bridge is most of a page on its own --
+        stretch into acres of blank sheet. Squeezing them keeps the arrangement
+        and loses only the emptiness.
+
+        Piecewise linear, and applied to wire runs as well as parts, so a
+        compressed gap moves the wire across it by exactly the same amount.
+        """
+        if not values:
+            return lambda v: v
+        bands = []
+        for v in sorted(values):
+            lo, hi = v - self.BAND_PAD, v + self.BAND_PAD
+            if bands and lo <= bands[-1][1]:
+                bands[-1][1] = max(bands[-1][1], hi)
+            else:
+                bands.append([lo, hi])
+
+        shifts = [(bands[0][0], 0.0)]
+        drop = 0.0
+        for before, after in zip(bands, bands[1:]):
+            gap = after[0] - before[1]
+            if gap > self.MAX_GAP:
+                drop += gap - self.MAX_GAP
+            shifts.append((after[0], drop))
+
+        def remap(v):
+            total = 0.0
+            for start, d in shifts:
+                if v >= start:
+                    total = d
+                else:
+                    break
+            return v - total
+        return remap
 
     @staticmethod
     def _free(x, y, taken):
