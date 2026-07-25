@@ -1,0 +1,6 @@
+Type,Manufacturer,Part number,Comment,,,,
+servo,Baldor,MTE-4535-SPECIAL,Purchased from eBay,,,,
+servo driver,Servo Dynamics,SDFP4-1525-171-3-186,Contains 3 amplifier boards of type “AW 1451”,,,,
+interface,Mesa Electronics,7i97t,Ethernet analog servo interface,,,,
+computer,Raspbery Pi,Raspberry Pi 5,"8GB RAM, 500GB NVMe storage",,,,
+transformer,Triad Magnetics,VPT36-4440,Purchased from Mouser,,,,
