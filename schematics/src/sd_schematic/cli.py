@@ -5,8 +5,11 @@ import sys
 from pathlib import Path
 
 from . import netlist as netlist_mod
+from .eagle import SUPPLY_RAILS
 from .eagle import render as render_sch
 from .model import build_design
+from .placement import GridPlacer, SheetPlacer
+from .route import StubRouter
 from .sections import SECTIONS
 from .validate import validate_file, validate_string
 
@@ -17,10 +20,22 @@ NETLIST_NAME = "netlist.csv"
 DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / "output"
 
 
-def build(out_dir):
+PLACERS = {"sheets": SheetPlacer, "grid": GridPlacer}
+
+
+def _routers(placement_style):
+    """The grid baseline keeps the original all-labels routing."""
+    if placement_style == "grid":
+        return StubRouter()
+    return StubRouter(supply_rails=SUPPLY_RAILS)
+
+
+def build(out_dir, placement="sheets"):
     """Generate the ``.sch`` and netlist. Returns the paths written."""
     design = build_design(SECTIONS)
-    document, warnings = render_sch(design)
+    document, warnings = render_sch(design,
+                                    placer=PLACERS[placement](),
+                                    router=_routers(placement))
 
     for w in design.warnings + warnings:
         print("WARN", w, file=sys.stderr)
@@ -47,12 +62,16 @@ def main(argv=None):
                         help="build the .sch, validate an existing one, or both (default)")
     parser.add_argument("-o", "--out-dir", default=DEFAULT_OUT_DIR,
                         help="where the generated files go (default: %(default)s)")
+    parser.add_argument("-p", "--placement", default="sheets", choices=sorted(PLACERS),
+                        help="sheets: one A3 sheet per functional block, rail symbols "
+                             "for the supplies. grid: the original single half-metre "
+                             "sheet with a label on every pin (default: %(default)s)")
     args = parser.parse_args(argv)
 
     if args.command == "validate":
         report = validate_file(Path(args.out_dir) / SCH_NAME)
     else:
-        sch_path, _ = build(args.out_dir)
+        sch_path, _ = build(args.out_dir, args.placement)
         if args.command == "build":
             return 0
         print()

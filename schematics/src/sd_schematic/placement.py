@@ -30,13 +30,54 @@ COL_W, ROW_H, PER_ROW = 43.18, 33.02, 12
 
 MAIN_SHEET = "main"
 
+# --- one sheet per section -------------------------------------------------
+# A3 landscape, the EAGLE stock frame size. Eight columns of parts fit inside
+# it at the 43.18 mm pitch; twelve did not, which is why the single sheet grew
+# to half a metre wide.
+FRAME_W, FRAME_H = 387.35, 271.78
+FRAME_COLS, FRAME_ROWS = 8, 5
+SHEET_PER_ROW = 8
+# Inset far enough that a left-hand pin stub (12.7 mm) and the rail symbol that
+# may terminate it clear the frame border and its column labels.
+SHEET_X0, SHEET_Y0 = 33.02, 236.22
+TITLE_Y = 252.0
+SHEET_MARGIN = 12.7
+
+# Parts whose pins reach into a section other than the one that declared them.
+# Without an override a part lands on the sheet of whichever section happened
+# to declare it first, which is not always where it belongs.
+SHEET_OF = {
+    # R35B is the drawing's second "R35" -- the current-limit pot return. It
+    # belongs beside R31 in the compensation block, not in a MISC drawer.
+    "R35B": "S4_comp",
+}
+
+
+def sheet_assignment(design):
+    """refdes -> sheet key. Section membership, with :data:`SHEET_OF` on top."""
+    return {ref: SHEET_OF.get(ref, p["section"]) for ref, p in design.parts.items()}
+
+
+def sheet_keys_in_order(assignment):
+    """Sheet keys in :data:`SECTION_ORDER`, then anything unexpected."""
+    used = set(assignment.values())
+    keys = [k for k in SECTION_ORDER if k in used]
+    return keys + sorted(used - set(keys))
+
 
 class Sheet:
-    """One drawn page: a key, a title, and free text drawn on it."""
+    """One drawn page: a key, a title, free text, and an optional frame.
 
-    def __init__(self, key, title=""):
+    ``frame`` is ``(x1, y1, x2, y2, columns, rows)``. It matters for more than
+    decoration: the document sets ``xreflabel="%F%N/%S.%C%R"``, so without a
+    frame there are no column/row references and a cross-reference label has
+    nothing to point at.
+    """
+
+    def __init__(self, key, title="", frame=None):
         self.key = key
         self.title = title
+        self.frame = frame
         self.texts = []          # (x, y, string, size, layer)
 
     def text(self, x, y, s, size, layer):
@@ -64,8 +105,8 @@ class Placement:
         self.sheet_of = {}
         self.sheets = []
 
-    def add_sheet(self, key, title=""):
-        sheet = Sheet(key, title)
+    def add_sheet(self, key, title="", frame=None):
+        sheet = Sheet(key, title, frame)
         self.sheets.append(sheet)
         return sheet
 
@@ -105,4 +146,32 @@ class GridPlacer:
                 placement.put(ref, col * COL_W, y_cursor - row * ROW_H, MAIN_SHEET)
             y_cursor -= ((len(refs) + PER_ROW - 1) // PER_ROW) * ROW_H + 25.4
 
+        return placement
+
+
+class SheetPlacer:
+    """One A3 sheet per functional section, parts on a grid within it.
+
+    The arrangement inside a sheet is still refdes order — that is Phase 3's
+    job. What this buys on its own is that 263 parts stop sharing one half-metre
+    page, and that each sheet gets a frame so cross-references resolve.
+    """
+
+    def place(self, design):
+        placement = Placement()
+        assignment = sheet_assignment(design)
+        frame = (0.0, 0.0, FRAME_W, FRAME_H, FRAME_COLS, FRAME_ROWS)
+
+        for key in sheet_keys_in_order(assignment):
+            title = SECTION_TITLE.get(key, key)
+            sheet = placement.add_sheet(key, title, frame)
+            sheet.text(SHEET_X0 - 12.7, TITLE_Y, "%s  --  %s" % (key, title), 3.048, 97)
+
+            refs = sorted((r for r, k in assignment.items() if k == key), key=natural_key)
+            for i, ref in enumerate(refs):
+                col, row = i % SHEET_PER_ROW, i // SHEET_PER_ROW
+                placement.put(ref,
+                              SHEET_X0 + col * COL_W,
+                              SHEET_Y0 - row * ROW_H,
+                              key)
         return placement

@@ -118,3 +118,70 @@ def symbol_xml(symbol):
         text(-5.08, 9.0, ">NAME", 1.778, LAYER_NAMES),
         text(-5.08, -11.0, ">VALUE", 1.778, LAYER_VALUES),
         pins)
+
+
+# --------------------------------------------------------------- supplies ---
+# Ground and rail symbols. Drawing 139 of these instead of scattering 139
+# cross-reference labels is what stops the sheet reading as a wall of text.
+#
+# The pin sits at the symbol origin with length="point", so an instance is
+# placed exactly at the wire end it terminates — no offset arithmetic — and
+# direction="sup" is what makes Fusion treat the node as a rail rather than a
+# floating passive.
+
+SUPPLY_PREFIX = "SUPPLY_"
+
+# rail -> (glyph direction, visible text). "down" hangs below the wire end,
+# "up" sits above it. Keeping each rail's direction fixed reads far better
+# than rotating per pin.
+SUPPLY_STYLE = {
+    "GND":     ("down", "GND"),
+    "BUSCOM":  ("down", "BUS COMMON"),
+    "CHASSIS": ("down", "CHASSIS"),
+    "N15":     ("down", "-15V"),
+    "P15":     ("up",   "+15V"),
+    "P100":    ("up",   "+100V"),
+}
+
+
+def supply_symbol_name(rail):
+    return SUPPLY_PREFIX + rail
+
+
+def make_supply_symbol(rail):
+    """Return ``(pins, body)`` for one rail's symbol."""
+    direction, _ = SUPPLY_STYLE[rail]
+    body = []
+    if direction == "down":
+        body.append(wire(0, 0, 0, -2.54))
+        if rail == "CHASSIS":
+            # chassis: one bar with three hatch strokes
+            body.append(wire(-2.54, -2.54, 2.54, -2.54))
+            for x in (-1.778, 0.0, 1.778):
+                body.append(wire(x, -2.54, x - 1.016, -4.064))
+        else:
+            body.append(wire(-2.54, -2.54, 2.54, -2.54))
+            body.append(wire(-1.524, -3.81, 1.524, -3.81))
+            body.append(wire(-0.508, -5.08, 0.508, -5.08))
+        label_y = -8.0
+    else:
+        body.append(wire(0, 0, 0, 2.54))
+        body.append(wire(-2.54, 2.54, 2.54, 2.54))
+        body.append(wire(-2.54, 2.54, 0, 5.08))
+        body.append(wire(2.54, 2.54, 0, 5.08))
+        label_y = 6.0
+    pins = [(rail, 0.0, 0.0, "R90" if direction == "down" else "R270")]
+    return pins, body, label_y
+
+
+def supply_symbol_xml(rail):
+    """Render one supply ``<symbol>``."""
+    pins, body, label_y = make_supply_symbol(rail)
+    _, caption = SUPPLY_STYLE[rail]
+    pin_xml = "".join(
+        '<pin name="%s" x="%.3f" y="%.3f" visible="off" length="point" '
+        'direction="sup" rot="%s"/>' % (escape(pn), px, py, rot)
+        for (pn, px, py, rot) in pins)
+    return '<symbol name="%s">%s%s%s</symbol>' % (
+        supply_symbol_name(rail), "".join(body),
+        text(-4.0, label_y, caption, 1.524, LAYER_VALUES), pin_xml)

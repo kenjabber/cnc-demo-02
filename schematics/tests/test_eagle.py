@@ -3,9 +3,12 @@
 import xml.etree.ElementTree as ET
 
 from sd_schematic import eagle
+from sd_schematic.eagle import SUPPLY_RAILS
 from sd_schematic.model import build_design
-from sd_schematic.placement import SECTION_TITLE, GridPlacer
+from sd_schematic.placement import SECTION_TITLE, GridPlacer, sheet_assignment
+from sd_schematic.route import StubRouter
 from sd_schematic.sections import SECTIONS
+from sd_schematic.symbols import SUPPLY_PREFIX
 
 
 def test_document_is_well_formed_eagle_xml(sch):
@@ -24,30 +27,46 @@ def test_library_is_self_contained(sch):
             assert gate.get("symbol") in symbols
 
 
+def real_parts(root):
+    """Part names excluding the rail symbols, which are drawing decoration."""
+    return [p.get("name") for p in root.findall(".//parts/part")
+            if not (p.get("deviceset") or "").startswith(SUPPLY_PREFIX)]
+
+
 def test_every_part_is_instantiated_once(sch, design):
     root = ET.fromstring(sch)
     parts = [p.get("name") for p in root.findall(".//parts/part")]
     instances = [i.get("part") for i in root.findall(".//instances/instance")]
-    assert sorted(parts) == sorted(design.parts)
-    assert sorted(instances) == sorted(parts)
+    assert sorted(real_parts(root)) == sorted(design.parts)
+    assert sorted(instances) == sorted(parts), "every part instantiated exactly once"
 
 
 def test_nets_carry_every_pin_connection(sch, design):
     root = ET.fromstring(sch)
+    real = set(real_parts(root))
     rendered = {(n.get("name"), pr.get("part"), pr.get("pin"))
                 for n in root.findall(".//nets/net")
-                for pr in n.findall(".//pinref")}
+                for pr in n.findall(".//pinref")
+                if pr.get("part") in real}
     expected = {(name, ref, pin)
                 for name, pins in design.nets.items() for ref, pin in pins}
     assert rendered == expected
 
 
-def test_net_stubs_are_labelled_on_the_right_layers(sch):
+def test_net_stubs_are_on_the_right_layers(sch):
+    """Every segment carries a wire; a label if it has one is on layer 95.
+
+    A segment terminated by a rail symbol has no label at all -- that is the
+    point of the rail symbols.
+    """
     root = ET.fromstring(sch)
     for net in root.findall(".//nets/net"):
         for seg in net.findall("./segment"):
-            assert seg.find("./wire").get("layer") == "91"
-            assert seg.find("./label").get("layer") == "95"
+            assert seg.findall("./wire"), "segment with no wire"
+            for w in seg.findall("./wire"):
+                assert w.get("layer") == "91"
+            for label in seg.findall("./label"):
+                assert label.get("layer") == "95"
 
 
 def test_notes_reach_the_part_value(sch):
@@ -57,12 +76,20 @@ def test_notes_reach_the_part_value(sch):
     assert values["R1"] == "R"
 
 
-def test_section_headings_are_drawn(sch, design):
+def test_each_sheet_is_titled_and_framed(sch, design):
     root = ET.fromstring(sch)
+    keys = set(sheet_assignment(design).values())
     plain = "".join(t.text or "" for t in root.findall(".//plain/text"))
-    for sname in {p["section"] for p in design.parts.values()}:
-        assert sname in plain
-        assert SECTION_TITLE[sname] in plain
+    for key in keys:
+        assert key in plain
+        assert SECTION_TITLE[key] in plain
+
+    sheets = root.findall(".//sheets/sheet")
+    assert len(sheets) == len(keys)
+    for sheet in sheets:
+        frame = sheet.find("./plain/frame")
+        assert frame is not None, "no frame -- xref labels would have nothing to point at"
+        assert int(frame.get("columns")) > 0 and int(frame.get("rows")) > 0
 
 
 def test_render_reports_no_missing_geometry(design):
@@ -81,8 +108,26 @@ def test_output_is_reproducible():
     assert first == second
 
 
-def test_one_sheet_per_placement_sheet(sch):
-    """The serializer emits exactly the sheets the placer asked for."""
+def test_grid_placer_still_produces_one_sheet():
+    """The original single-sheet layout stays available for comparison."""
+    document, _ = eagle.render(build_design(SECTIONS),
+                               placer=GridPlacer(), router=StubRouter())
+    root = ET.fromstring(document)
+    assert len(root.findall(".//sheets/sheet")) == 1
+    assert root.find(".//sheets/sheet/plain/frame") is None
+
+
+def test_supply_symbols_replace_the_rail_labels(sch, design):
+    """Rail pins get a symbol, and no label."""
     root = ET.fromstring(sch)
-    sheets = root.findall(".//sheets/sheet")
-    assert len(sheets) == len(GridPlacer().place(build_design(SECTIONS)).sheets)
+    supply = {p.get("name") for p in root.findall(".//parts/part")
+              if (p.get("deviceset") or "").startswith(SUPPLY_PREFIX)}
+    expected = sum(len(design.nets[r]) for r in SUPPLY_RAILS if r in design.nets)
+    assert len(supply) == expected
+
+    for net in root.findall(".//nets/net"):
+        if net.get("name") in SUPPLY_RAILS:
+            assert net.findall(".//label") == [], "%s still uses labels" % net.get("name")
+
+    labels = len(root.findall(".//nets/net//label"))
+    assert labels == design.pin_connections - expected

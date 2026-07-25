@@ -43,16 +43,24 @@ def pin_geometry(symbol, origin, pin):
 
 
 class StubRouter:
-    """A stub and a cross-reference label at every pin — nothing is joined.
+    """A stub at every pin, terminated by a label or by a rail symbol.
 
-    The original strategy. Correct, because same-named labels are electrically
-    connected in EAGLE, but it means all 627 connections are drawn as loose
-    ends. Kept as the fallback for nets a real router declines.
+    Nothing is joined to anything: correctness comes from same-name label
+    matching, which EAGLE honours. With ``supply_rails`` empty this is the
+    original behaviour — all 627 connections drawn as loose ends.
+
+    Naming a net in ``supply_rails`` swaps its label for a ground or supply
+    symbol. That is what removes the 68 scattered ``GND`` labels and the 36
+    ``P15`` ones, and it costs no routing at all.
     """
+
+    def __init__(self, supply_rails=frozenset()):
+        self.supply_rails = frozenset(supply_rails)
 
     def route(self, design, placement, sym_of):
         routed, warnings = {}, []
         for name, pinrefs in design.nets.items():
+            is_rail = name in self.supply_rails
             segments = []
             for ref, pin in pinrefs:
                 geo = pin_geometry(sym_of[ref], placement.coords[ref], pin)
@@ -60,11 +68,15 @@ class StubRouter:
                     warnings.append("no geometry %s.%s" % (ref, pin))
                     continue
                 cx, cy, ex, ey = geo
-                segments.append(Segment(
+                segment = Segment(
                     sheet=placement.sheet_of[ref],
                     wires=[(cx, cy, ex, ey)],
-                    pinrefs=[(ref, pin)],
-                    labels=[(ex, ey + 0.635, "R0")]))
+                    pinrefs=[(ref, pin)])
+                if is_rail:
+                    segment.supplies.append((name, ex, ey, "R0"))
+                else:
+                    segment.labels.append((ex, ey + 0.635, "R0"))
+                segments.append(segment)
             if segments:
                 routed[name] = segments
         return routed, warnings

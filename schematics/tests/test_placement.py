@@ -4,17 +4,29 @@ These invariants are deliberately strategy-agnostic: any placer added later
 should be able to run through :func:`check_placement_invariants` unchanged.
 """
 
-from sd_schematic.placement import PER_ROW, GridPlacer, natural_key
+from sd_schematic.placement import (
+    PER_ROW,
+    SHEET_MARGIN,
+    GridPlacer,
+    SheetPlacer,
+    natural_key,
+    sheet_assignment,
+)
 
 
 def check_placement_invariants(design, placement):
     """Hold for every strategy, whatever geometry it chooses."""
     assert set(placement.coords) == set(design.parts), "every part placed exactly once"
 
-    positions = list(placement.coords.values())
-    assert len(positions) == len(set(positions)), "two parts share a point"
-
     keys = {s.key for s in placement.sheets}
+
+    # Overlap only matters within a page: two parts on different sheets may
+    # legitimately sit at the same coordinate.
+    for key in keys:
+        refs = placement.refs_on(key)
+        positions = [placement.coords[r] for r in refs]
+        assert len(positions) == len(set(positions)), "two parts overlap on sheet %s" % key
+
     assert keys, "at least one sheet"
     for ref, key in placement.sheet_of.items():
         assert key in keys, "%s is on unknown sheet %r" % (ref, key)
@@ -25,6 +37,41 @@ def check_placement_invariants(design, placement):
 
 def test_grid_placer_holds_the_invariants(design):
     check_placement_invariants(design, GridPlacer().place(design))
+
+
+def test_sheet_placer_holds_the_invariants(design):
+    check_placement_invariants(design, SheetPlacer().place(design))
+
+
+def test_sheet_placer_gives_every_section_its_own_framed_sheet(design):
+    placement = SheetPlacer().place(design)
+    keys = set(sheet_assignment(design).values())
+    assert {s.key for s in placement.sheets} == keys
+    for sheet in placement.sheets:
+        assert sheet.frame is not None
+        assert sheet.texts, "%s has no title" % sheet.key
+
+
+def test_r35b_is_filed_with_the_block_it_belongs_to(design):
+    """It is the drawing's second "R35" -- the current-limit pot return.
+
+    Its declaring section is the EXTRA_PARTS catch-all, which would put it on a
+    MISC sheet of one part. SHEET_OF files it next to R31 instead.
+    """
+    assert design.parts["R35B"]["section"] == "extra"
+    assert SheetPlacer().place(design).sheet_of["R35B"] == "S4_comp"
+    assert "extra" not in {s.key for s in SheetPlacer().place(design).sheets}
+
+
+def test_everything_sits_inside_its_frame(design):
+    """Parts must clear the frame border, not merely fall inside the page."""
+    placement = SheetPlacer().place(design)
+    for sheet in placement.sheets:
+        x1, y1, x2, y2, _, _ = sheet.frame
+        for ref in placement.refs_on(sheet.key):
+            x, y = placement.coords[ref]
+            assert x1 + SHEET_MARGIN <= x <= x2 - SHEET_MARGIN, "%s x=%.1f" % (ref, x)
+            assert y1 + SHEET_MARGIN <= y <= y2 - SHEET_MARGIN, "%s y=%.1f" % (ref, y)
 
 
 def test_grid_placer_wraps_at_per_row(design):

@@ -7,6 +7,9 @@ the transcription matches the scan. Run it after any hand edit to
 
 import math
 import xml.etree.ElementTree as ET
+from collections import defaultdict
+
+from .symbols import SUPPLY_PREFIX
 
 
 class Report:
@@ -57,9 +60,27 @@ def _validate(root):
     symbols = {s.get("name"): s for s in lib.findall("./symbols/symbol")}
     devsets = {d.get("name"): d for d in lib.findall("./devicesets/deviceset")}
     parts = {p.get("name"): p for p in root.findall(".//parts/part")}
-    sheet = root.find(".//sheets/sheet")
-    instances = {i.get("part"): i for i in sheet.findall("./instances/instance")}
-    nets = sheet.findall("./nets/net")
+    sheets = root.findall(".//sheets/sheet")
+    if not sheets:
+        report.errors.append("document has no sheets")
+        return report
+
+    # Rail symbols are a drawing decoration, not part of the transcribed
+    # design, so they are counted separately and kept out of "pin connects" --
+    # otherwise the totals stop meaning what the netlist says.
+    supply = {n for n, p in parts.items()
+              if (p.get("deviceset") or "").startswith(SUPPLY_PREFIX)}
+
+    instances, sheet_of = {}, {}
+    for idx, sheet in enumerate(sheets):
+        for i in sheet.findall("./instances/instance"):
+            name = i.get("part")
+            if name in instances:
+                report.errors.append("instance %s appears on two sheets" % name)
+            instances[name] = i
+            sheet_of[name] = idx
+    nets = [(idx, n) for idx, sheet in enumerate(sheets)
+            for n in sheet.findall("./nets/net")]
 
     # 1. every part resolves to a deviceset, and every gate to a symbol
     for pn, p in parts.items():
@@ -92,48 +113,64 @@ def _validate(root):
         return {p.get("name"): (float(p.get("x")), float(p.get("y")), p.get("rot", "R0"))
                 for p in symbol.findall("./pin")}
 
-    # 3. nets: pinrefs valid, wires land on the pin, no pin in two nets
-    used = {}
-    for net in nets:
+    # 3. nets: pinrefs valid, every wire end reachable, no pin in two nets
+    used, supply_connects = {}, 0
+    net_pins = defaultdict(set)
+    for sheet_idx, net in nets:
         name = net.get("name")
-        segments = net.findall("./segment")
-        if len(segments) < 2:
-            report.errors.append("net %s has %d segment(s)" % (name, len(segments)))
-        for seg in segments:
-            pinref = seg.find("./pinref")
-            w = seg.find("./wire")
-            if pinref is None:
+        for seg in net.findall("./segment"):
+            pinrefs = seg.findall("./pinref")
+            wires = seg.findall("./wire")
+            if not pinrefs:
                 report.errors.append("net %s: segment without pinref" % name)
                 continue
-            part, pin = pinref.get("part"), pinref.get("pin")
-            if part not in parts:
-                report.errors.append("net %s: pinref to unknown part %s" % (name, part))
+            if not wires:
+                report.errors.append("net %s: segment without wire" % name)
                 continue
-            pins = sym_pins(part)
-            if pin not in pins:
-                report.errors.append("net %s: %s has no pin %s (has %s)"
-                                     % (name, part, pin, sorted(pins)))
-                continue
-            ix, iy = float(instances[part].get("x")), float(instances[part].get("y"))
-            px, py = ix + pins[pin][0], iy + pins[pin][1]
-            wx, wy = float(w.get("x1")), float(w.get("y1"))
-            if math.hypot(wx - px, wy - py) > 1e-6:
-                report.errors.append(
-                    "net %s: wire for %s.%s starts at (%.3f,%.3f) not pin (%.3f,%.3f)"
-                    % (name, part, pin, wx, wy, px, py))
-            if w.get("layer") != "91":
-                report.errors.append("net %s: wire not on layer 91" % name)
-            label = seg.find("./label")
-            if label is None or label.get("layer") != "95":
-                report.errors.append("net %s: missing/mislayered label" % name)
-            key = (part, pin)
-            if key in used:
-                report.errors.append("pin %s.%s appears in two nets: %s and %s"
-                                     % (part, pin, used[key], name))
-            used[key] = name
+            for w in wires:
+                if w.get("layer") != "91":
+                    report.errors.append("net %s: wire not on layer 91" % name)
+            ends = {(round(float(w.get(a)), 6), round(float(w.get(b)), 6))
+                    for w in wires for a, b in (("x1", "y1"), ("x2", "y2"))}
+
+            for pinref in pinrefs:
+                part, pin = pinref.get("part"), pinref.get("pin")
+                if part not in parts:
+                    report.errors.append("net %s: pinref to unknown part %s" % (name, part))
+                    continue
+                if sheet_of.get(part) != sheet_idx:
+                    report.errors.append("net %s: %s is drawn on another sheet" % (name, part))
+                    continue
+                pins = sym_pins(part)
+                if pin not in pins:
+                    report.errors.append("net %s: %s has no pin %s (has %s)"
+                                         % (name, part, pin, sorted(pins)))
+                    continue
+                ix, iy = float(instances[part].get("x")), float(instances[part].get("y"))
+                px, py = ix + pins[pin][0], iy + pins[pin][1]
+                if not any(math.hypot(ex - px, ey - py) <= 1e-6 for ex, ey in ends):
+                    report.errors.append(
+                        "net %s: no wire end at %s.%s (%.3f,%.3f)" % (name, part, pin, px, py))
+
+                key = (part, pin)
+                if key in used:
+                    report.errors.append("pin %s.%s appears in two nets: %s and %s"
+                                         % (part, pin, used[key], name))
+                used[key] = name
+                if part in supply:
+                    supply_connects += 1
+                else:
+                    net_pins[name].add(key)
+
+    # every net must reach at least two real pins, counting across sheets
+    for name, pins in net_pins.items():
+        if len(pins) < 2:
+            report.errors.append("net %s reaches %d pin(s)" % (name, len(pins)))
 
     # 4. dangling pins (informational -- these are the untraced cross-sheet runs)
     for pn in parts:
+        if pn in supply:
+            continue
         for pin in sym_pins(pn):
             if (pn, pin) not in used:
                 report.dangling.append("%s.%s" % (pn, pin))
@@ -141,16 +178,21 @@ def _validate(root):
     # 5. no two parts stacked on the same point
     seen = {}
     for pn, i in instances.items():
-        key = (i.get("x"), i.get("y"))
+        if pn in supply:
+            continue
+        key = (sheet_of[pn], i.get("x"), i.get("y"))
         if key in seen:
             report.errors.append("instances %s and %s overlap at %s" % (seen[key], pn, key))
         seen[key] = pn
 
     report.counts = {
+        "sheets": len(sheets),
         "symbols": len(symbols),
         "devicesets": len(devsets),
-        "parts": len(parts),
-        "nets": len(nets),
-        "pin connects": len(used),
+        "parts": len(parts) - len(supply),
+        "supply symbols": len(supply),
+        "nets": len({n.get("name") for _, n in nets}),
+        "pin connects": len(used) - supply_connects,
+        "labels": sum(len(n.findall(".//label")) for _, n in nets),
     }
     return report

@@ -42,7 +42,7 @@ def test_wire_off_its_pin_is_caught(sch):
 
     report = validate_string(broken)
     assert not report.ok
-    assert any("not pin" in e for e in report.errors)
+    assert any("no wire end at" in e for e in report.errors)
 
 
 def test_missing_deviceset_is_caught(sch):

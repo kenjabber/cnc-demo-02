@@ -39,10 +39,18 @@ sweep across the middle of the sheet are where any remaining errors will be.
 
 ### The layout is not the original
 
-Parts are placed on a functional grid with **net labels**, not routed wires.
-Same-named labels are electrically connected — this is standard EAGLE practice
-and Fusion honours it. It means the schematic is correct and browsable but does
-not look like the 1985 drawing. Keep the scan alongside it.
+The sheet is split into **nine A3 pages, one per functional block**, each with a
+frame so cross-reference labels resolve to a column/row. Ground and supply pins
+carry **rail symbols**; other connections are still **net labels** rather than
+routed wires. Same-named labels are electrically connected — standard EAGLE
+practice, and Fusion honours it.
+
+Within a page, parts are still ordered by reference designator rather than by
+signal flow, so the pages are correct and browsable but do not look like the
+1985 drawing. Keep the scan alongside it.
+
+`--placement grid` regenerates the original single half-metre sheet with a label
+on every pin, for comparison.
 
 No component **values** are on the original — it's a simplified schematic showing
 reference designators only. The `value` field instead carries the part kind plus
