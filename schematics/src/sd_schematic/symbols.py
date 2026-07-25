@@ -108,21 +108,38 @@ def make_symbol(kind, pins, roles=None):
     elif kind in AMPLIFIER:
         # Triangle: inputs left, output right. Inverting input on top, which is
         # where a reader expects it when the feedback resistor runs over the top.
-        out = [(roles["in-"], -10.16, 2.54, "R0", DIR_IN),
-               (roles["in+"], -10.16, -2.54, "R0", DIR_IN),
-               (roles["out"], 10.16, 0.0, "R180", DIR_OUT)]
-        body.append(poly([(-7.62, -6.35), (-7.62, 6.35), (7.62, 0)]))
-        body.append(wire(-10.16, 2.54, -7.62, 2.54))
-        body.append(wire(-10.16, -2.54, -7.62, -2.54))
-        body.append(wire(7.62, 0, 10.16, 0))
-        body.append(text(-6.6, 1.4, "-", 1.778))
-        body.append(text(-6.9, -3.6, "+", 1.778))
+        traced = (roles or {}).get("pin_offsets") or {}
+        here = {r: traced.get(roles[r]) for r in ("in-", "in+", "out")}
+        if all(here.values()):
+            # Take the drawn positions. The default triangle put U9's inputs
+            # 7 mm from where its wires arrive, so each one reached its pin by
+            # running past it and doubling back.
+            out = [(roles["in-"], here["in-"][0], here["in-"][1], "R0", DIR_IN),
+                   (roles["in+"], here["in+"][0], here["in+"][1], "R0", DIR_IN),
+                   (roles["out"], here["out"][0], here["out"][1], "R180", DIR_OUT)]
+            back = min(here["in-"][0], here["in+"][0])
+            reach = max(abs(here["in-"][1]), abs(here["in+"][1])) + 1.27
+            body.append(poly([(back, -reach), (back, reach), (here["out"][0], 0.0)]))
+            body.append(text(back + 1.0, here["in-"][1] - 1.2, "-", 1.778))
+            body.append(text(back + 0.8, here["in+"][1] - 1.2, "+", 1.778))
+            rail_y = reach * 0.62
+        else:
+            out = [(roles["in-"], -10.16, 2.54, "R0", DIR_IN),
+                   (roles["in+"], -10.16, -2.54, "R0", DIR_IN),
+                   (roles["out"], 10.16, 0.0, "R180", DIR_OUT)]
+            body.append(poly([(-7.62, -6.35), (-7.62, 6.35), (7.62, 0)]))
+            body.append(wire(-10.16, 2.54, -7.62, 2.54))
+            body.append(wire(-10.16, -2.54, -7.62, -2.54))
+            body.append(wire(7.62, 0, 10.16, 0))
+            body.append(text(-6.6, 1.4, "-", 1.778))
+            body.append(text(-6.9, -3.6, "+", 1.778))
+            rail_y = 3.175
         if "v+" in roles:
-            out.append((roles["v+"], 0.0, 7.62, "R270", DIR_PWR))
-            body.append(wire(0, 5.08, 0, 3.175))
+            out.append((roles["v+"], 0.0, rail_y + 4.45, "R270", DIR_PWR))
+            body.append(wire(0, rail_y + 1.9, 0, rail_y))
         if "v-" in roles:
-            out.append((roles["v-"], 0.0, -7.62, "R90", DIR_PWR))
-            body.append(wire(0, -5.08, 0, -3.175))
+            out.append((roles["v-"], 0.0, -rail_y - 4.45, "R90", DIR_PWR))
+            body.append(wire(0, -rail_y - 1.9, 0, -rail_y))
         for pin in pins:
             if pin not in {p[0] for p in out}:
                 out.append((pin, -10.16, -6.35, "R0", DIR_PAS))
@@ -264,8 +281,13 @@ def make_symbol(kind, pins, roles=None):
                                           (1, right, w / 2 + PIN_STUB, DIR_OUT)):
             top = (len(names) - 1) * pitch / 2.0
             for i, pn in enumerate(names):
-                y = traced[pn][1] if pn in traced else top - i * pitch
-                out.append((pn, x, y, "R0" if side == 0 else "R180", direction))
+                if pn in traced:
+                    # Both axes: the drawing attaches its wires at the box edge,
+                    # not 2.54 mm outside it.
+                    px, y = traced[pn]
+                else:
+                    px, y = x, top - i * pitch
+                out.append((pn, px, y, "R0" if side == 0 else "R180", direction))
         # Pins the drawing brings in from underneath, spread along the bottom,
         # and out of the top -- CLOCK's output leaves upward on the sheet.
         for names, y, rot, direction in ((bottom, -h / 2 - PIN_STUB, "R90", DIR_IN),
@@ -274,8 +296,8 @@ def make_symbol(kind, pins, roles=None):
                 continue
             step = w / (len(names) + 1.0)
             for i, pn in enumerate(names, start=1):
-                x = traced[pn][0] if pn in traced else -w / 2 + i * step
-                out.append((pn, x, y, rot, direction))
+                px, py = traced.get(pn, (-w / 2 + i * step, y))
+                out.append((pn, px, py, rot, direction))
 
     elif kind == "TP":
         out = [(pins[0], -7.62, 0.0, "R0", DIR_PAS)]
@@ -338,8 +360,11 @@ def build_symbol_library(parts, drawn_extents=False):
     kind_count = defaultdict(int)
     for ref, p in parts.items():
         roles = p.get("roles") or {}
-        if not drawn_extents and "extent" in roles:
-            roles = {k: v for k, v in roles.items() if k != "extent"}
+        if not drawn_extents:
+            # Traced sizes and pin positions belong to the scan layout. On an
+            # auto-placed sheet they only make symbols too big for the grid.
+            roles = {k: v for k, v in roles.items()
+                     if k not in ("extent", "pin_offsets")}
         keyed = dict(p, roles=roles)
         key = signature(keyed)
         if key not in symbols:

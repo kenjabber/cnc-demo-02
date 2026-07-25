@@ -210,10 +210,20 @@ class TrunkRouter:
                 seen = occupancy.setdefault(sheet, ({}, {}))
 
                 if name in self.supply_rails:
-                    stubs = self._stubs(name, here, placement, sym_of, warnings, rail=True)
-                    for stub in stubs:
+                    final = []
+                    for stub in self._stubs(name, here, placement, sym_of,
+                                            warnings, rail=True):
+                        # The wires that join a merged cluster are real wires and
+                        # get the same no-overlap rule as everything else; if one
+                        # would lie along another net, keep the pins separate.
+                        if len(stub.pinrefs) > 1 and self._would_overlap(stub, seen):
+                            final.extend(self._rail_singles(name, stub.pinrefs,
+                                                            placement, sym_of, warnings))
+                        else:
+                            final.append(stub)
+                    for stub in final:
                         self._occupy(stub, seen)
-                    segments.extend(stubs)
+                    segments.extend(final)
                     continue
 
                 piece = None
@@ -234,10 +244,71 @@ class TrunkRouter:
                 routed[name] = segments
         return routed, warnings
 
+    #: Rail pins closer than this share one symbol. The drawing brings +15 V
+    #: down to a node and fans out from it; a symbol per pin stacks two on top
+    #: of each other and reads as two separate supplies.
+    RAIL_MERGE = 12.7
+
+    def _rail_singles(self, name, pinrefs, placement, sym_of, warnings):
+        """One symbol per pin -- the unmerged form, and the safe fallback."""
+        out = []
+        for ref, pin in pinrefs:
+            geo = pin_geometry(sym_of[ref], placement.coords[ref], pin,
+                               placement.rot.get(ref, "R0"))
+            if geo is None:
+                warnings.append("no geometry %s.%s" % (ref, pin))
+                continue
+            cx, cy, ex, ey = geo
+            segment = Segment(sheet=placement.sheet_of[ref],
+                              wires=[(cx, cy, ex, ey)], pinrefs=[(ref, pin)])
+            segment.supplies.append((name, ex, ey, "R0"))
+            out.append(segment)
+        return out
+
+    def _rail_stubs(self, name, pinrefs, placement, sym_of, warnings):
+        """One supply symbol per cluster of rail pins, wired together."""
+        geo = {}
+        for ref, pin in pinrefs:
+            g = pin_geometry(sym_of[ref], placement.coords[ref], pin,
+                             placement.rot.get(ref, "R0"))
+            if g is None:
+                warnings.append("no geometry %s.%s" % (ref, pin))
+                continue
+            geo[(ref, pin)] = g
+
+        clusters = []
+        for key in sorted(geo):
+            for cluster in clusters:
+                if any(abs(geo[key][2] - geo[k][2]) + abs(geo[key][3] - geo[k][3])
+                       <= self.RAIL_MERGE for k in cluster):
+                    cluster.append(key)
+                    break
+            else:
+                clusters.append([key])
+
+        out = []
+        for cluster in clusters:
+            anchor = geo[cluster[0]]
+            segment = Segment(sheet=placement.sheet_of[cluster[0][0]])
+            for key in cluster:
+                cx, cy, ex, ey = geo[key]
+                segment.wires.append((cx, cy, ex, ey))
+                segment.pinrefs.append(key)
+            for key in cluster[1:]:
+                _, _, ex, ey = geo[key]
+                if abs(ex - anchor[2]) > 1e-6:
+                    segment.wires.append((anchor[2], anchor[3], ex, anchor[3]))
+                if abs(ey - anchor[3]) > 1e-6:
+                    segment.wires.append((ex, anchor[3], ex, ey))
+            segment.supplies.append((name, anchor[2], anchor[3], "R0"))
+            out.append(segment)
+        return out
+
     def _stubs(self, name, pinrefs, placement, sym_of, warnings, rail=False):
         """Fall back to the original stub-and-label for these pins."""
-        if not rail:
-            self.declined.append(name)
+        if rail:
+            return self._rail_stubs(name, pinrefs, placement, sym_of, warnings)
+        self.declined.append(name)
         out = []
         for ref, pin in pinrefs:
             geo = pin_geometry(sym_of[ref], placement.coords[ref], pin,

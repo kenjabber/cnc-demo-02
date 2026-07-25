@@ -68,7 +68,7 @@ def test_known_and_unknown_do_not_collide(design):
     """Auto-placed parts sit below the mapped block, not on top of it."""
     from sd_schematic.symbols import build_symbol_library
 
-    _, sym_of = build_symbol_library(design.parts)
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
     placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
     for sheet in placement.sheets:
         boxes = []

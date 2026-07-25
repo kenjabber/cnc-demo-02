@@ -407,6 +407,8 @@ class ScanPlacer(SheetPlacer):
                 x, y = self._free(x, y, taken)
                 placement.put(ref, x, y, key, entry[2] if len(entry) > 2 else "R0")
 
+            self._centre_two_pin_parts(design, placement, known, convert)
+
             unknown = [r for r in auto.refs_on(key) if r not in self.positions]
             if unknown:
                 sheet.text(SHEET_X0 - 12.7, 60.96,
@@ -416,6 +418,40 @@ class ScanPlacer(SheetPlacer):
                 x, y = self._free(SHEET_X0 + col * COL_W, 50.8 - row * SHEET_ROW_H, taken)
                 placement.put(ref, x, y, key)
         return placement
+
+    def _centre_two_pin_parts(self, design, placement, known, convert):
+        """Sit a series part midway between the two pins it joins.
+
+        The drawing's own spacing is uneven, and a fixed-size symbol in a gap
+        that is not its own width exaggerates it -- R73 ended up hard against
+        PWM with three times the clearance on the LOCK-OUT side.
+        """
+        from .model import derive_pin_offsets
+
+        offsets = derive_pin_offsets()
+        placed = set(known)
+
+        def pin_x(ref, pin):
+            entry = self.positions.get(ref)
+            if entry is None or ref not in offsets or pin not in offsets[ref]:
+                return None
+            return convert(entry[0], entry[1])[0] + offsets[ref][pin][0]
+
+        for ref in known:
+            part = design.parts[ref]
+            if len(part["pins"]) != 2 or placement.rot.get(ref, "R0") != "R0":
+                continue
+            neighbours = []
+            for name, pins in design.nets.items():
+                mine = [p for p in pins if p[0] == ref]
+                others = [p for p in pins if p[0] != ref and p[0] in placed]
+                if len(mine) == 1 and len(others) == 1:
+                    x = pin_x(*others[0])
+                    if x is not None:
+                        neighbours.append(x)
+            if len(neighbours) == 2:
+                _, y = placement.coords[ref]
+                placement.coords[ref] = (sum(neighbours) / 2.0, y)
 
     @staticmethod
     def _free(x, y, taken):

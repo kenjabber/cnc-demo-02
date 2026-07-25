@@ -31,7 +31,7 @@ RAILS = frozenset(GLOBAL_ORDER)
 @pytest.fixture(scope="module")
 def scan_routed(design):
     placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
-    _, sym_of = build_symbol_library(design.parts)
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
     router = ScanRouter(supply_rails=RAILS)
     nets, warnings = router.route(design, placement, sym_of)
     return placement, sym_of, router, nets, warnings
@@ -205,7 +205,7 @@ def test_untranscribed_nets_still_route(design, scan_routed):
 
 def test_router_is_deterministic(design):
     placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
-    _, sym_of = build_symbol_library(design.parts)
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
     runs = []
     for _ in range(2):
         nets, _ = ScanRouter(supply_rails=RAILS).route(design, placement, sym_of)
@@ -292,3 +292,59 @@ def test_scan_placement_is_not_grid_snapped(design):
                if abs(placement.coords[r][0] / 2.54
                       - round(placement.coords[r][0] / 2.54)) > 1e-6]
     assert offgrid, "positions look snapped to the grid again"
+
+
+def test_series_parts_sit_midway_between_their_neighbours(design, scan_routed):
+    """R73 was hard against PWM with three times the clearance the other side."""
+    placement, sym_of, _, _, _ = scan_routed
+
+    def at(ref, pin):
+        return pin_geometry(sym_of[ref], placement.coords[ref], pin,
+                            placement.rot.get(ref, "R0"))[0]
+
+    for part, before, after in (("R73", ("PWM", "3"), ("LOCKOUT", "1")),
+                                ("R76", ("PWM", "4"), ("LOCKOUT", "2"))):
+        left = at(part, "1") - at(*before)
+        right = at(*after) - at(part, "2")
+        assert abs(left - right) < 0.5, "%s: %.2f vs %.2f" % (part, left, right)
+        assert left > 2.0, "%s is crowding its neighbour" % part
+
+
+def test_a_rail_feeding_neighbouring_pins_draws_one_symbol(design, scan_routed):
+    """C56 and R137 share a +15 V node on the drawing, not two supplies."""
+    _, _, _, nets, _ = scan_routed
+    merged = [s for s in nets["P15"]
+              if s.sheet == "S8_pwmdrv" and len(s.pinrefs) > 1]
+    assert merged, "the two +15 V pins are still drawn separately"
+    for segment in merged:
+        assert len(segment.supplies) == 1
+        assert {p[0] for p in segment.pinrefs} == {"C56", "R137"}
+
+
+def test_every_rail_segment_has_exactly_one_symbol(scan_routed):
+    _, _, _, nets, _ = scan_routed
+    for rail in RAILS:
+        for segment in nets.get(rail, []):
+            assert len(segment.supplies) == 1
+            assert not segment.labels
+
+
+def test_the_centre_tap_spine_is_clear_of_the_driver_pins(scan_routed):
+    """A branch stub 0.76 mm long puts the junction dot on top of the pin."""
+    placement, sym_of, _, nets, _ = scan_routed
+    (segment,) = nets["N_XFMR_CT"]
+    spine = [w for w in segment.wires if abs(w[0] - w[2]) < 1e-6]
+    assert spine
+    x = spine[0][0]
+    for ref in ("DRIVER1", "DRIVER2"):
+        px = pin_geometry(sym_of[ref], placement.coords[ref], "3",
+                          placement.rot.get(ref, "R0"))[0]
+        assert abs(px - x) > 4.0, "%s.3 sits on the spine" % ref
+
+
+def test_the_op_amp_inputs_meet_their_wires(design, scan_routed):
+    """R104's wire ran down past U9A's own pin and back up to reach it."""
+    _, _, router, nets, _ = scan_routed
+    assert "N_U9_NONINV" in router.from_scan
+    (segment,) = nets["N_U9_NONINV"]
+    assert len(segment.wires) <= 2, "the wire is still doubling back"
