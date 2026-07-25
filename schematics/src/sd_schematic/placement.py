@@ -295,3 +295,111 @@ class ClusterPlacer(SheetPlacer):
             ordered.extend(group)
             row_used = (row_used + len(group)) % SHEET_PER_ROW
         return ordered
+
+
+# --- placement from the scan ------------------------------------------------
+GRID = 2.54
+SCAN_AREA = (SHEET_X0, 76.2, SHEET_X0 + (SHEET_PER_ROW - 1) * COL_W, SHEET_Y0)
+
+
+def _snap(value):
+    return round(value / GRID) * GRID
+
+
+def fit_box(points, area):
+    """Map scan pixels into a sheet area, preserving aspect ratio.
+
+    Scaling the axes independently would stretch the block and misrepresent
+    the drawing, so the tighter of the two scales wins and the result is
+    centred in the leftover space.
+    """
+    x1, y1, x2, y2 = area
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    span_x = max(xs) - min(xs)
+    span_y = max(ys) - min(ys)
+    scale = min((x2 - x1) / span_x if span_x else float("inf"),
+                (y2 - y1) / span_y if span_y else float("inf"))
+    if scale == float("inf"):
+        scale = 1.0
+    pad_x = ((x2 - x1) - span_x * scale) / 2.0
+    pad_y = ((y2 - y1) - span_y * scale) / 2.0
+
+    def convert(px, py):
+        # Scan y increases downward; sheet y increases upward.
+        return (x1 + pad_x + (px - min(xs)) * scale,
+                y2 - pad_y - (py - min(ys)) * scale)
+    return convert
+
+
+class ScanPlacer(SheetPlacer):
+    """Place parts where they sit on the original drawing, where that is known.
+
+    Coverage is deliberately partial. A part with no scan position is placed by
+    the wrapped strategy in rows beneath the mapped block, so coordinates can be
+    transcribed one section at a time and the build never breaks in between —
+    which is what makes a 263-part transcription tractable at all.
+
+    Within-sheet fidelity is the goal. The relationships *between* blocks, and
+    the long horizontal buses, cannot survive the split into nine sheets; the
+    scan is still the reference for those.
+    """
+
+    def __init__(self, positions=None, fallback=None, area=SCAN_AREA):
+        from .sections import POSITIONS
+
+        self.positions = POSITIONS if positions is None else positions
+        self.fallback = fallback or SheetPlacer()
+        self.area = area
+
+    def place(self, design):
+        # Lay the wrapped strategy out first. A sheet with no usable scan data
+        # then reuses its result verbatim, so "no coordinates yet" is exactly
+        # the previous behaviour rather than an approximation of it.
+        auto = self.fallback.place(design)
+
+        placement = Placement()
+        assignment = sheet_assignment(design)
+        frame = (0.0, 0.0, FRAME_W, FRAME_H, FRAME_COLS, FRAME_ROWS)
+
+        for key in sheet_keys_in_order(assignment):
+            title = SECTION_TITLE.get(key, key)
+            sheet = placement.add_sheet(key, title, frame)
+            sheet.text(SHEET_X0 - 12.7, TITLE_Y, "%s  --  %s" % (key, title), 3.048, 97)
+
+            refs = [r for r, k in assignment.items() if k == key]
+            known = sorted((r for r in refs if r in self.positions), key=natural_key)
+
+            if len(known) < 2:
+                # One point defines no arrangement; do not pretend otherwise.
+                for ref in auto.refs_on(key):
+                    x, y = auto.coords[ref]
+                    placement.put(ref, x, y, key, auto.rot.get(ref, "R0"))
+                continue
+
+            taken = set()
+            convert = fit_box([self.positions[r] for r in known], self.area)
+            for ref in known:
+                x, y = convert(*self.positions[ref])
+                x, y = self._free(_snap(x), _snap(y), taken)
+                placement.put(ref, x, y, key)
+
+            unknown = [r for r in auto.refs_on(key) if r not in self.positions]
+            if unknown:
+                sheet.text(SHEET_X0 - 12.7, 60.96,
+                           "below: no scan position yet, auto-placed", 2.54, 97)
+            for i, ref in enumerate(unknown):
+                col, row = i % SHEET_PER_ROW, i // SHEET_PER_ROW
+                x, y = self._free(SHEET_X0 + col * COL_W, 50.8 - row * SHEET_ROW_H, taken)
+                placement.put(ref, x, y, key)
+        return placement
+
+    @staticmethod
+    def _free(x, y, taken):
+        """Nudge onto the nearest free grid point. Scan positions collide."""
+        step = 0
+        while (round(x, 3), round(y, 3)) in taken:
+            step += 1
+            x, y = x + GRID * (step % 3), y - GRID * ((step + 1) % 3)
+        taken.add((round(x, 3), round(y, 3)))
+        return x, y

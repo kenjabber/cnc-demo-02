@@ -83,9 +83,39 @@ Total same-sheet wiring span, which is what that is for:
 The pages are correct, browsable and reasonably tidy, but they still do not look
 like the 1985 drawing. Keep the scan alongside it.
 
-`--placement` selects the layout: `chains` (default), `sheets` for the same nine
-pages in refdes order, `grid` for the original single half-metre sheet with a
-label on every pin.
+`--placement` selects the layout: `chains` (default), `scan` (below), `sheets`
+for the same nine pages in refdes order, `grid` for the original single
+half-metre sheet with a label on every pin.
+
+### Placing parts where the drawing puts them
+
+`POSITIONS` in `sections.py` maps a refdes to its pixel position on the 400 dpi
+scan. `--placement scan` fits each block's known positions to its page,
+preserving aspect ratio, so the block keeps the shape the draughtsman gave it
+without inheriting the empty space around it on the D-size original.
+
+**Coverage is partial by design.** A part with no entry is auto-placed in rows
+beneath the mapped block, under a note saying so, and a sheet with fewer than
+two known positions falls back wholesale. So coordinates can be transcribed one
+block at a time and every intermediate state still builds — which is what makes
+263 parts tractable. With `POSITIONS` empty the output is identical to
+`--placement chains`, and a test asserts exactly that.
+
+To add a block: crop its region of page 30 at high zoom, read each part's centre
+in scan pixels (landscape, origin top-left, y downward), and add the entries.
+Placement never affects the netlist, so a mistake here is cosmetic.
+
+The `POSITIONS` currently in the file are **one block only and approximate** —
+read off a full-page render rather than at transcription zoom. They are a worked
+example of the mechanism, not verified data.
+
+Two honest limits. Within-sheet fidelity is achievable; the relationships
+*between* blocks and the long horizontal buses cannot survive the split into
+nine sheets. And positions alone say where parts sit, not how the draughtsman
+ran the wires between them — the router's channel assumptions do not survive
+arbitrary placement, so a block placed from `POSITIONS` with no `WIRES` may read
+worse than the auto-placed, auto-routed one. `WIRES` is reserved for traced
+polylines; the two want to land together.
 
 No component **values** are on the original — it's a simplified schematic showing
 reference designators only. `>VALUE` therefore shows a note where there is one

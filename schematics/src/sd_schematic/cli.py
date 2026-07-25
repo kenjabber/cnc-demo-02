@@ -8,7 +8,7 @@ from . import netlist as netlist_mod
 from .eagle import SUPPLY_RAILS
 from .eagle import render as render_sch
 from .model import build_design
-from .placement import ClusterPlacer, GridPlacer, SheetPlacer
+from .placement import ClusterPlacer, GridPlacer, ScanPlacer, SheetPlacer
 from .route import StubRouter, TrunkRouter
 from .sections import SECTIONS
 from .validate import validate_file, validate_string
@@ -22,6 +22,7 @@ DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / "output"
 
 PLACERS = {
     "chains": lambda: ClusterPlacer(supply_rails=SUPPLY_RAILS),
+    "scan": lambda: ScanPlacer(fallback=ClusterPlacer(supply_rails=SUPPLY_RAILS)),
     "sheets": SheetPlacer,
     "grid": GridPlacer,
 }
@@ -77,9 +78,11 @@ def main(argv=None):
                         help="where the generated files go (default: %(default)s)")
     parser.add_argument("-p", "--placement", default="chains", choices=sorted(PLACERS),
                         help="chains: one A3 sheet per functional block, parts ordered "
-                             "by signal chain. sheets: the same, ordered by refdes. "
-                             "grid: the original single half-metre sheet with a label "
-                             "on every pin (default: %(default)s)")
+                             "by signal chain. scan: parts placed where the original "
+                             "drawing puts them, where a position is known, the rest "
+                             "auto-placed below. sheets: refdes order. grid: the "
+                             "original single half-metre sheet with a label on every "
+                             "pin (default: %(default)s)")
     args = parser.parse_args(argv)
 
     if args.command == "validate":

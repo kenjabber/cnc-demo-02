@@ -411,3 +411,54 @@ ROLE_FROM_PIN_NAME = {
     "B": "b", "C": "c", "E": "e",
     "G": "g", "D": "d", "S": "s",
 }
+
+
+# ------------------------------------------------------------ scan layout ----
+# Where each part sits on the original drawing, so the generated sheets can be
+# arranged like it rather than on a grid. Optional and incremental: a part with
+# no entry is auto-placed as before, so this can be filled in one block at a
+# time and every partial state still builds.
+#
+# Coordinates are pixels in the 400 dpi scan of page 30, landscape, origin top
+# left, y increasing downward. They are mapped per sheet: the bounding box of
+# one block's known positions is fitted to that block's page, preserving aspect
+# ratio, so a block keeps its shape without inheriting the empty space around
+# it on the D-size original.
+SCAN = {
+    "dpi": 400,
+    "size_px": (6720, 4336),      # landscape, after the page's /Rotate 270
+    "y_down": True,
+}
+
+# refdes -> (x_px, y_px)
+#
+# APPROXIMATE, AND ONLY ONE BLOCK. These were read off a full-page render, not
+# at the high zoom the netlist was transcribed at, so treat them as a worked
+# example of the mechanism rather than as verified data -- roughly +/-100 px,
+# which is a few millimetres on the drawn sheet. Placement never affects the
+# netlist, so an error here is cosmetic. Refine at zoom before trusting the
+# arrangement, and delete any entry you cannot confirm.
+POSITIONS = {
+    # S8_pwmdrv -- the modulator chain, drawn left to right along the bottom of
+    # the sheet: U9 -> PULSE WIDTH MODULATOR -> LOCK-OUT CIRCUIT -> DRIVERs,
+    # with CLOCK feeding the modulator from below.
+    "R94":     (2110, 2503),
+    "R95":     (2110, 2604),
+    "U9A":     (2218, 2621),
+    "R104":    (2201, 2688),
+    "CLOCK":   (2271, 2855),
+    "PWM":     (2513, 2688),
+    "R73":     (2728, 2654),
+    "R76":     (2728, 2782),
+    "LOCKOUT": (2930, 2688),
+    "DRIVER1": (3494, 2537),
+    "DRIVER2": (3494, 2728),
+}
+
+# Reserved, not yet consumed: traced wire polylines per net, in the same scan
+# pixel space. Positions alone reproduce where parts sit but not how the
+# draughtsman ran the wires between them, and the router's channel assumptions
+# do not survive arbitrary placement -- so a sheet placed from POSITIONS with
+# no WIRES may well read worse than the auto-placed, auto-routed one. The two
+# want to land together.
+WIRES = {}
