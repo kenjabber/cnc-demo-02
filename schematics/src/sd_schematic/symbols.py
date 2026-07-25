@@ -186,42 +186,54 @@ def make_symbol(kind, pins, roles=None):
             tallest = max(len(g) for g in groups)
             if tallest > 1:
                 pitch = max(pitch, extent[1] / (tallest * len(groups)))
-        height = max((len(g) - 1) * pitch for g in groups) or pitch
-        body.append(wire(-0.635, height / 2 + 1.27, -0.635, -height / 2 - 1.27))
-        body.append(wire(0.635, height / 2 + 1.27, 0.635, -height / 2 - 1.27))
 
-        right_top = height / 2
-        for index, group in enumerate(groups):
-            left = index == 0
-            side = -1 if left else 1
-            coil_x = side * 2.54
-            pin_x = side * 10.16
-            rot = "R0" if left else "R180"
-            if left:
-                top = (len(group) - 1) * pitch / 2
-            else:
-                top = right_top
-                right_top -= (len(group) - 1) * pitch + pitch * 1.5
+        primary, secondaries = groups[0], groups[1:]
+        gap = pitch * 1.5
+
+        def coil(group, top, side):
+            """Draw one winding and return its pins. ``side`` -1 left, +1 right."""
+            coil_x, pin_x = side * 2.54, side * 10.16
+            rot = "R0" if side < 0 else "R180"
+            placed = []
             for i, pn in enumerate(group):
                 y = top - i * pitch
-                out.append((pn, pin_x, y, rot, DIR_PAS))
+                placed.append((pn, pin_x, y, rot, DIR_PAS))
                 body.append(wire(pin_x, y, coil_x, y))
             for i in range(len(group) - 1):
                 y = top - i * pitch
-                # Bulge away from the core, so the two coils read as separate.
+                # Bulge away from the core, so the coils read as separate.
                 body.append(arc(coil_x, y, coil_x, y - pitch, -180.0 * side))
+            return placed
+
+        # Centre both sides on the core. Stacking the secondaries downward from
+        # the primary's top left the lower one hanging past the end of the core
+        # with its leads going nowhere.
+        right_span = sum((len(g) - 1) * pitch for g in secondaries)
+        right_span += gap * max(len(secondaries) - 1, 0)
+        cursor = right_span / 2.0
+        for group in secondaries:
+            out.extend(coil(group, cursor, 1))
+            cursor -= (len(group) - 1) * pitch + gap
+        out.extend(coil(primary, (len(primary) - 1) * pitch / 2.0, -1))
+
+        # The core must run the full height of the tallest side, or a winding
+        # appears detached from the transformer.
+        reach = max([abs(e[2]) for e in out] or [pitch]) + 1.27
+        body.append(wire(-0.635, reach, -0.635, -reach))
+        body.append(wire(0.635, reach, 0.635, -reach))
 
     elif kind == "BLOCK":
         # The drawing names these rather than drawing them out: PULSE WIDTH
         # MODULATOR, LOCK-OUT CIRCUIT, CLOCK. Keep that, but put the name
         # inside the box the way the original does.
         sides = (roles or {}).get("sides")
-        bottom = []
+        bottom, top_pins = [], []
         if sides:
             left = [p for p in sides.get("left", []) if p in pins]
             right = [p for p in sides.get("right", []) if p in pins]
             bottom = [p for p in sides.get("bottom", []) if p in pins]
-            rest = [p for p in pins if p not in left + right + bottom]
+            top_pins = [p for p in sides.get("top", []) if p in pins]
+            rest = [p for p in pins if p not in left + right + bottom + top_pins]
             left += rest
         else:
             named = [p for p in pins if not p.isdigit()]
@@ -249,11 +261,15 @@ def make_symbol(kind, pins, roles=None):
             for i, pn in enumerate(names):
                 out.append((pn, x, top - i * pitch, "R0" if side == 0 else "R180",
                             direction))
-        # Pins the drawing brings in from underneath, spread along the bottom.
-        if bottom:
-            step = w / (len(bottom) + 1.0)
-            for i, pn in enumerate(bottom, start=1):
-                out.append((pn, -w / 2 + i * step, -h / 2 - PIN_STUB, "R90", DIR_IN))
+        # Pins the drawing brings in from underneath, spread along the bottom,
+        # and out of the top -- CLOCK's output leaves upward on the sheet.
+        for names, y, rot, direction in ((bottom, -h / 2 - PIN_STUB, "R90", DIR_IN),
+                                         (top_pins, h / 2 + PIN_STUB, "R270", DIR_OUT)):
+            if not names:
+                continue
+            step = w / (len(names) + 1.0)
+            for i, pn in enumerate(names, start=1):
+                out.append((pn, -w / 2 + i * step, y, rot, direction))
 
     elif kind == "TP":
         out = [(pins[0], -7.62, 0.0, "R0", DIR_PAS)]

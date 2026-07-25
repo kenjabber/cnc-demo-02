@@ -176,3 +176,58 @@ def test_signature_survives_a_winding_map():
     b = {"kind": "XFMR", "pins": ["1", "2"], "roles": {"windings": [["1", "2"]]}}
     assert signature(a) != signature(b)
     assert hash(signature(a))
+
+
+def test_block_can_take_pins_out_of_the_top():
+    """CLOCK's output leaves upward on the sheet.
+
+    On the right, the traced run -- which heads straight up -- had to cut back
+    through the box to reach its own pin.
+    """
+    pins, _ = make_symbol("BLOCK", ["1"], {"sides": {"top": ["1"]}})
+    (pin,) = pins
+    assert pin[2] > 0, "pin above the box"
+    assert pin[3] == "R270", "stub runs upward"
+    assert pin[4] == "out"
+
+
+def test_block_bottom_and_top_are_spread_along_the_edge():
+    pins, _ = make_symbol("BLOCK", ["1", "2", "3", "4"],
+                          {"sides": {"left": ["1"], "right": ["2"],
+                                     "bottom": ["3", "4"]}})
+    at = {p[0]: p for p in pins}
+    assert at["3"][2] < 0 and at["4"][2] < 0
+    assert at["3"][0] != at["4"][0], "bottom pins must not stack on one point"
+    assert at["3"][3] == "R90", "stub runs downward"
+
+
+def test_clock_takes_its_output_off_the_top(design):
+    from sd_schematic.symbols import build_symbol_library
+
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
+    (pin,) = sym_of["CLOCK"]["pins"]
+    assert pin[2] > 0 and pin[3] == "R270"
+
+
+def test_transformer_windings_are_centred_on_the_core(design):
+    """Both secondaries must sit against the core, not hang past its end."""
+    from sd_schematic.symbols import build_symbol_library
+
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
+    symbol = sym_of["T4"]
+    right = [e for e in symbol["pins"] if e[1] > 0]
+    left = [e for e in symbol["pins"] if e[1] < 0]
+    assert len(right) == 6 and len(left) == 3
+
+    # Symmetric about the core on both sides.
+    for side in (right, left):
+        ys = [e[2] for e in side]
+        assert abs(max(ys) + min(ys)) < 1e-6, "winding stack is off-centre"
+
+    # And the core is long enough to reach the outermost pin.
+    reach = max(abs(e[2]) for e in symbol["pins"])
+    core = [f for f in symbol["body"] if 'x1="-0.635"' in f]
+    assert core, "no core drawn"
+    ends = [float(v) for v in
+            __import__("re").findall(r'y[12]="(-?[\d.]+)"', core[0])]
+    assert max(ends) >= reach, "core stops short of the top winding"

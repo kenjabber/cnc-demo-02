@@ -445,7 +445,10 @@ BLOCK_SIDES = {
     "PWM":     {"left": ["1", "2"], "right": ["3", "4"]},
     "LOCKOUT": {"left": ["1", "2"], "right": ["3", "4"],
                 "bottom": ["5", "6"]},
-    "CLOCK":   {"left": [], "right": ["1"]},
+    # CLOCK's output leaves the top of the box on the sheet. On the right, the
+    # traced run -- which heads straight up -- had to cut back through the box
+    # to reach its own pin.
+    "CLOCK":   {"top": ["1"]},
     "DRIVER1": {"left": ["1"], "right": ["2", "3", "4"]},
     "DRIVER2": {"left": ["1"], "right": ["2", "3", "4"]},
 }
