@@ -8,7 +8,7 @@ from . import netlist as netlist_mod
 from .eagle import SUPPLY_RAILS
 from .eagle import render as render_sch
 from .model import build_design
-from .placement import GridPlacer, SheetPlacer
+from .placement import ClusterPlacer, GridPlacer, SheetPlacer
 from .route import StubRouter
 from .sections import SECTIONS
 from .validate import validate_file, validate_string
@@ -20,7 +20,11 @@ NETLIST_NAME = "netlist.csv"
 DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / "output"
 
 
-PLACERS = {"sheets": SheetPlacer, "grid": GridPlacer}
+PLACERS = {
+    "chains": lambda: ClusterPlacer(supply_rails=SUPPLY_RAILS),
+    "sheets": SheetPlacer,
+    "grid": GridPlacer,
+}
 
 
 def _routers(placement_style):
@@ -30,7 +34,7 @@ def _routers(placement_style):
     return StubRouter(supply_rails=SUPPLY_RAILS)
 
 
-def build(out_dir, placement="sheets"):
+def build(out_dir, placement="chains"):
     """Generate the ``.sch`` and netlist. Returns the paths written."""
     design = build_design(SECTIONS)
     document, warnings = render_sch(design,
@@ -62,10 +66,11 @@ def main(argv=None):
                         help="build the .sch, validate an existing one, or both (default)")
     parser.add_argument("-o", "--out-dir", default=DEFAULT_OUT_DIR,
                         help="where the generated files go (default: %(default)s)")
-    parser.add_argument("-p", "--placement", default="sheets", choices=sorted(PLACERS),
-                        help="sheets: one A3 sheet per functional block, rail symbols "
-                             "for the supplies. grid: the original single half-metre "
-                             "sheet with a label on every pin (default: %(default)s)")
+    parser.add_argument("-p", "--placement", default="chains", choices=sorted(PLACERS),
+                        help="chains: one A3 sheet per functional block, parts ordered "
+                             "by signal chain. sheets: the same, ordered by refdes. "
+                             "grid: the original single half-metre sheet with a label "
+                             "on every pin (default: %(default)s)")
     args = parser.parse_args(argv)
 
     if args.command == "validate":

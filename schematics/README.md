@@ -45,12 +45,27 @@ carry **rail symbols**; other connections are still **net labels** rather than
 routed wires. Same-named labels are electrically connected — standard EAGLE
 practice, and Fusion honours it.
 
-Within a page, parts are still ordered by reference designator rather than by
-signal flow, so the pages are correct and browsable but do not look like the
-1985 drawing. Keep the scan alongside it.
+Within a page, parts are ordered by **signal chain**: the generator builds an
+adjacency graph from the nets — excluding power and any net over six pins, which
+are buses rather than evidence of adjacency — walks each connected component as
+a chain, and lays the chains into rows that alternate direction so a chain that
+wraps continues directly below itself. An op-amp and its feedback resistor sit
+side by side rather than rows apart.
 
-`--placement grid` regenerates the original single half-metre sheet with a label
-on every pin, for comparison.
+Total same-sheet wiring span, which is what that is for:
+
+| layout | total | mean per net | neighbouring nets |
+|---|---|---|---|
+| one sheet, refdes order | 51 754 mm | 323 mm | 6 / 160 |
+| nine sheets, refdes order | 31 246 mm | 211 mm | 9 / 148 |
+| nine sheets, signal chains | **16 883 mm** | **114 mm** | **53 / 148** |
+
+The pages are correct, browsable and reasonably tidy, but they still do not look
+like the 1985 drawing. Keep the scan alongside it.
+
+`--placement` selects the layout: `chains` (default), `sheets` for the same nine
+pages in refdes order, `grid` for the original single half-metre sheet with a
+label on every pin.
 
 No component **values** are on the original — it's a simplified schematic showing
 reference designators only. `>VALUE` therefore shows a note where there is one

@@ -11,7 +11,7 @@ from xml.sax.saxutils import escape
 
 from .geometry import LAYER_NETS, layers_xml, text, wire
 from .model import GLOBAL_ORDER, NOTES
-from .placement import SheetPlacer
+from .placement import ClusterPlacer
 from .route import StubRouter
 from .symbols import (
     SUPPLY_STYLE,
@@ -140,11 +140,11 @@ def frame_xml(frame):
 def render(design, placer=None, router=None):
     """Return ``(document, warnings)``.
 
-    Defaults to one sheet per functional section with rail symbols for the
-    supplies. Pass ``GridPlacer()`` and a bare ``StubRouter()`` for the
-    original single-sheet, all-labels output.
+    Defaults to one sheet per functional section, ordered by signal chain,
+    with rail symbols for the supplies. Pass ``GridPlacer()`` and a bare
+    ``StubRouter()`` for the original single-sheet, all-labels output.
     """
-    placer = placer or SheetPlacer()
+    placer = placer or ClusterPlacer(supply_rails=SUPPLY_RAILS)
     router = router or StubRouter(supply_rails=SUPPLY_RAILS)
 
     symbols, sym_of = build_symbol_library(design.parts)

@@ -155,10 +155,19 @@ class GridPlacer:
 class SheetPlacer:
     """One A3 sheet per functional section, parts on a grid within it.
 
-    The arrangement inside a sheet is still refdes order — that is Phase 3's
-    job. What this buys on its own is that 263 parts stop sharing one half-metre
-    page, and that each sheet gets a frame so cross-references resolve.
+    Order within a sheet comes from :meth:`order`; this base class uses refdes
+    order, which is why the pages read as a parts bin even once they are the
+    right size.
     """
+
+    serpentine = False
+
+    def order(self, design, refs, sheet_key):
+        """Return ``refs`` in the order they should fill the grid.
+
+        May contain ``None``, which leaves a grid cell empty.
+        """
+        return sorted(refs, key=natural_key)
 
     def place(self, design):
         placement = Placement()
@@ -170,11 +179,119 @@ class SheetPlacer:
             sheet = placement.add_sheet(key, title, frame)
             sheet.text(SHEET_X0 - 12.7, TITLE_Y, "%s  --  %s" % (key, title), 3.048, 97)
 
-            refs = sorted((r for r, k in assignment.items() if k == key), key=natural_key)
-            for i, ref in enumerate(refs):
+            refs = [r for r, k in assignment.items() if k == key]
+            for i, ref in enumerate(self.order(design, refs, key)):
+                if ref is None:          # padding that keeps a chain on one row
+                    continue
                 col, row = i % SHEET_PER_ROW, i // SHEET_PER_ROW
+                if self.serpentine and row % 2:
+                    # Rows alternate direction, so a chain that wraps continues
+                    # directly below where it left off instead of jumping the
+                    # full width of the sheet back to the left margin.
+                    col = SHEET_PER_ROW - 1 - col
                 placement.put(ref,
                               SHEET_X0 + col * COL_W,
                               SHEET_Y0 - row * SHEET_ROW_H,
                               key)
         return placement
+
+
+# --- connectivity-driven ordering ------------------------------------------
+# Nets bigger than this are buses, not evidence that two parts sit next to each
+# other. N_CL reaches nine pins and N_SUM ten; treating those as adjacency
+# would pull half a sheet into one blob.
+MAX_ADJACENCY_NET = 6
+
+
+def signal_graph(design, refs, supply_rails, max_pins=MAX_ADJACENCY_NET):
+    """Undirected adjacency between parts on one sheet.
+
+    Power and ground are excluded — everything touches them, so they say
+    nothing about who should sit beside whom.
+    """
+    on_sheet = set(refs)
+    adjacency = {r: set() for r in refs}
+    for name, pins in design.nets.items():
+        if name in supply_rails or len(pins) > max_pins:
+            continue
+        members = sorted({r for r, _ in pins if r in on_sheet}, key=natural_key)
+        for i, a in enumerate(members):
+            for b in members[i + 1:]:
+                adjacency[a].add(b)
+                adjacency[b].add(a)
+    return adjacency
+
+
+def _chain_order(adjacency, component):
+    """Walk a component as a chain, starting from its most upstream end.
+
+    Greedy: always step to the unvisited neighbour with the fewest unvisited
+    neighbours of its own, which follows a chain to its end rather than
+    wandering into the middle of it.
+    """
+    degree = {r: len(adjacency[r]) for r in component}
+    ends = [r for r in component if degree[r] <= 1] or list(component)
+    start = min(ends, key=natural_key)
+
+    ordered, seen = [], set()
+    stack = [start]
+    while stack:
+        ref = stack.pop()
+        if ref in seen:
+            continue
+        seen.add(ref)
+        ordered.append(ref)
+        nxt = sorted((n for n in adjacency[ref] if n not in seen),
+                     key=lambda r: (len([m for m in adjacency[r] if m not in seen]),
+                                    natural_key(r)))
+        stack.extend(reversed(nxt))
+    return ordered
+
+
+def components(adjacency):
+    """Connected components, each chain-ordered. Biggest first, then by name."""
+    seen, found = set(), []
+    for ref in sorted(adjacency, key=natural_key):
+        if ref in seen:
+            continue
+        stack, group = [ref], []
+        while stack:
+            r = stack.pop()
+            if r in seen:
+                continue
+            seen.add(r)
+            group.append(r)
+            stack.extend(sorted(adjacency[r] - seen, key=natural_key))
+        found.append(_chain_order(adjacency, set(group)))
+    found.sort(key=lambda g: (-len(g), natural_key(g[0])))
+    return found
+
+
+class ClusterPlacer(SheetPlacer):
+    """Order each sheet by its signal chains rather than by refdes.
+
+    An op-amp and its feedback resistor end up side by side instead of rows
+    apart, which is what lets the router draw a short wire instead of a long
+    trunk. Placement and routing are one decision, not two.
+
+    A chain is never split across a row break unless it is longer than the row,
+    and rows run alternately left-to-right and right-to-left so a chain that
+    does wrap continues directly below itself.
+    """
+
+    serpentine = True
+
+    def __init__(self, supply_rails=frozenset()):
+        self.supply_rails = frozenset(supply_rails)
+
+    def order(self, design, refs, sheet_key):
+        adjacency = signal_graph(design, refs, self.supply_rails)
+        ordered, row_used = [], 0
+        for group in components(adjacency):
+            if (row_used and len(group) <= SHEET_PER_ROW
+                    and row_used + len(group) > SHEET_PER_ROW):
+                ordered.extend([None] * (SHEET_PER_ROW - row_used))   # pad the row
+                row_used = 0
+            ordered.extend(group)
+            row_used = (row_used + len(group)) % SHEET_PER_ROW
+        return ordered
