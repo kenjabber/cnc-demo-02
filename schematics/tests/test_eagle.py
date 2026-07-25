@@ -70,10 +70,20 @@ def test_net_stubs_are_on_the_right_layers(sch):
 
 
 def test_notes_reach_the_part_value(sch):
+    """>VALUE carries a note when there is one, and nothing when there is not.
+
+    The original prints reference designators only, so a plain resistor has no
+    value to show; it used to read "R", 111 times over.
+    """
     root = ET.fromstring(sch)
     values = {p.get("name"): p.get("value") for p in root.findall(".//parts/part")}
     assert "the sheet prints R59 twice" in values["R59B"]
-    assert values["R1"] == "R"
+    assert not values["R1"]
+
+    kinds = {d.get("name"): d.findtext("./description")
+             for d in root.findall(".//devicesets/deviceset")}
+    ds = {p.get("name"): p.get("deviceset") for p in root.findall(".//parts/part")}
+    assert kinds[ds["R1"]] == "R"
 
 
 def test_each_sheet_is_titled_and_framed(sch, design):

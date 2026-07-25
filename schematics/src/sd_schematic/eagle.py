@@ -107,13 +107,17 @@ def library_xml(design, sym_of, supply_instances):
         if ds not in seen:
             seen.add(ds)
             devices.append(
-                '<deviceset name="%s" prefix="%s" uservalue="yes"><gates>'
+                '<deviceset name="%s" prefix="%s" uservalue="yes">'
+                '<description>%s</description><gates>'
                 '<gate name="G$1" symbol="%s" x="0" y="0"/></gates>'
                 '<devices><device name=""><technologies><technology name=""/>'
                 '</technologies></device></devices></deviceset>'
-                % (ds, re.sub(r"[^A-Za-z]", "", ref)[:3] or "X", sym_of[ref]["name"]))
-        desc = NOTES.get(ref, "")
-        value = (p["kind"] + ((" | " + desc) if desc else ""))[:250]
+                % (ds, re.sub(r"[^A-Za-z]", "", ref)[:3] or "X",
+                   escape(p["kind"]), sym_of[ref]["name"]))
+        # The original is a simplified schematic with reference designators and
+        # no values, so >VALUE carries only a note where there is one. Printing
+        # the kind put a literal "R" under all 111 resistors.
+        value = NOTES.get(ref, "")[:250]
         parts.append('<part name="%s" library="sd1525" deviceset="%s" device="" value="%s"/>'
                      % (ref, ds, escape(value, {'"': "&quot;", "'": "&apos;"})))
 

@@ -53,8 +53,18 @@ signal flow, so the pages are correct and browsable but do not look like the
 on every pin, for comparison.
 
 No component **values** are on the original — it's a simplified schematic showing
-reference designators only. The `value` field instead carries the part kind plus
-any note.
+reference designators only. `>VALUE` therefore shows a note where there is one
+and nothing otherwise; the part kind lives in the deviceset description.
+
+### Pin roles
+
+Which pin is a base and which is an output is recorded in `ROLES` in
+`sections.py`, keyed by refdes. A pin already named `B`/`C`/`E` or `G`/`D`/`S`
+supplies its own role and needs no entry, which leaves sixteen parts in the
+table. There is deliberately **no positional fallback** — a part whose role
+cannot be resolved warns rather than being guessed at, because guessing from
+declaration order is what drew U1A's output on the left and put U4A's collector
+in the base slot.
 
 ## Corrected during audit
 

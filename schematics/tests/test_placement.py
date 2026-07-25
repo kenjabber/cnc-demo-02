@@ -101,3 +101,34 @@ def test_grid_placer_draws_a_heading_per_section(design):
 
 def test_natural_key_orders_numerically():
     assert sorted(["R10", "R9", "R100"], key=natural_key) == ["R9", "R10", "R100"]
+
+
+def symbol_extent(symbol):
+    """Half-width and half-height of a symbol, from its pin envelope."""
+    xs = [e[1] for e in symbol["pins"]]
+    ys = [e[2] for e in symbol["pins"]]
+    return max(abs(min(xs)), abs(max(xs))), max(abs(min(ys)), abs(max(ys)))
+
+
+def test_symbols_do_not_collide_on_a_sheet(design):
+    """Bounding boxes, not just centres.
+
+    Real device symbols are bigger than the featureless boxes they replaced --
+    J1's pin strip alone is 35.6 mm tall -- so "no two parts share a point" is
+    no longer enough to know the sheet is legible.
+    """
+    from sd_schematic.symbols import build_symbol_library
+
+    _, sym_of = build_symbol_library(design.parts)
+    placement = SheetPlacer().place(design)
+
+    for sheet in placement.sheets:
+        boxes = []
+        for ref in placement.refs_on(sheet.key):
+            x, y = placement.coords[ref]
+            hw, hh = symbol_extent(sym_of[ref])
+            boxes.append((ref, x - hw, y - hh, x + hw, y + hh))
+        for i, (ra, ax1, ay1, ax2, ay2) in enumerate(boxes):
+            for rb, bx1, by1, bx2, by2 in boxes[i + 1:]:
+                overlap = ax1 < bx2 and bx1 < ax2 and ay1 < by2 and by1 < ay2
+                assert not overlap, "%s and %s overlap on %s" % (ra, rb, sheet.key)

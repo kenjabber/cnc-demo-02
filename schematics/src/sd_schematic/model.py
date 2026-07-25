@@ -10,7 +10,7 @@ net in another section.
 import re
 from collections import OrderedDict, defaultdict
 
-from .symbols import TWO_PIN
+from .symbols import REQUIRED_ROLES, TWO_PIN
 
 # Parts that appear in a section's nets but whose declaration lives elsewhere,
 # or that need declaring outright.
@@ -211,8 +211,51 @@ def natural_key(name):
     return (re.sub(r"\d+", "", name), int(re.sub(r"\D", "", name) or 0))
 
 
+def resolve_roles(parts, roles_table=None, name_map=None):
+    """Attach a role map to every part, and report the ones that come up short.
+
+    Order is: the explicit table, then the pin's own name (a pin called ``B``
+    is the base), then nothing. There is deliberately no positional fallback —
+    guessing a role from a pin's position in the declaration is what drew
+    U1A's output on the left and put U4A's collector in the base slot.
+    """
+    from .sections import ROLE_FROM_PIN_NAME, ROLES
+
+    roles_table = ROLES if roles_table is None else roles_table
+    name_map = ROLE_FROM_PIN_NAME if name_map is None else name_map
+
+    warnings = []
+    for ref, part in parts.items():
+        declared = set(part["pins"])
+        resolved = {}
+        for role, pin in roles_table.get(ref, {}).items():
+            if pin not in declared:
+                warnings.append("%s: role %r names pin %r, which it does not have"
+                                % (ref, role, pin))
+                continue
+            resolved[role] = pin
+        # Inference only fills gaps. A pin the table already spoke for keeps
+        # that role and gets no second one -- Q7's "E" is its gate, and must
+        # not also be claimed as an emitter.
+        claimed = set(resolved.values())
+        for pin in part["pins"]:
+            role = name_map.get(pin)
+            if role and role not in resolved and pin not in claimed:
+                resolved[role] = pin
+                claimed.add(pin)
+        part["roles"] = resolved
+
+        needed = REQUIRED_ROLES.get(part["kind"])
+        if needed and not all(r in resolved for r in needed):
+            missing = [r for r in needed if r not in resolved]
+            warnings.append("%s (%s) has no %s -- it cannot be drawn correctly"
+                            % (ref, part["kind"], "/".join(missing)))
+    return warnings
+
+
 def build_design(sections):
     """Full pipeline: sections in, one merged :class:`Design` out."""
     parts = build_parts(sections)
     nets, warnings = build_nets(sections, parts)
+    warnings += resolve_roles(parts)
     return Design(parts, nets, warnings)

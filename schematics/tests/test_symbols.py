@@ -22,10 +22,38 @@ def test_polarised_capacitor_is_marked():
     assert "+" not in "".join(plain)
 
 
-def test_transistor_keeps_the_declared_pin_names():
-    pins, _ = make_symbol("NPN", ["B", "C", "E"])
-    assert pin_names(pins) == ["B", "C", "E"]
-    assert len(pins) == 3
+def test_transistor_terminals_go_where_their_role_says():
+    """Base left, collector top, emitter bottom -- whatever the pins are called."""
+    pins, _ = make_symbol("NPN", ["12", "13", "14"],
+                          {"c": "12", "b": "13", "e": "14"})
+    at = {p[0]: p for p in pins}
+    assert at["13"][1] < 0, "base on the left"
+    assert at["12"][2] > 0, "collector on top"
+    assert at["14"][2] < 0, "emitter on the bottom"
+
+
+def test_fet_gate_goes_where_its_role_says_not_where_it_sits():
+    """Q7 is declared S, D, E but the pin called E is the gate."""
+    pins, _ = make_symbol("NMOS", ["S", "D", "E"], {"s": "S", "d": "D", "g": "E"})
+    at = {p[0]: p for p in pins}
+    assert at["E"][1] < 0, "gate on the left"
+    assert at["D"][2] > 0 and at["S"][2] < 0
+
+
+def test_amplifier_output_is_on_the_right():
+    pins, _ = make_symbol("OPAMP", ["1", "2", "3"],
+                          {"out": "1", "in-": "2", "in+": "3"})
+    at = {p[0]: p for p in pins}
+    assert at["1"][1] > 0, "output on the right"
+    assert at["2"][1] < 0 and at["3"][1] < 0, "both inputs on the left"
+
+
+def test_amplifier_rails_are_drawn_when_known():
+    pins, _ = make_symbol("OPAMP", ["4", "5", "6", "7", "8"],
+                          {"v-": "4", "in+": "5", "in-": "6", "out": "7", "v+": "8"})
+    at = {p[0]: p for p in pins}
+    assert at["8"][2] > 0 and at["4"][2] < 0
+    assert at["8"][4] == "pwr" and at["4"][4] == "pwr"
 
 
 def test_pot_has_a_wiper_on_top():
@@ -34,16 +62,34 @@ def test_pot_has_a_wiper_on_top():
     assert pins[1][3] == "R270", "the wiper should point up"
 
 
-def test_generic_symbol_alternates_sides_and_grows():
+def test_generic_symbol_runs_pins_down_one_side():
+    """Small ICs keep every pin on the left, in order.
+
+    Alternating sides by index parity is what made U6 unreadable.
+    """
     pins, _ = make_symbol("IC", [str(i) for i in range(1, 9)])
     assert pin_names(pins) == [str(i) for i in range(1, 9)]
-    left = [p for i, p in enumerate(pins) if i % 2 == 0]
-    right = [p for i, p in enumerate(pins) if i % 2 == 1]
-    assert all(p[1] < 0 for p in left)
-    assert all(p[1] > 0 for p in right)
+    assert all(p[1] < 0 for p in pins)
+    ys = [p[2] for p in pins]
+    assert ys == sorted(ys, reverse=True), "pins descend in declaration order"
 
     small, _ = make_symbol("IC", ["1", "2"])
     assert len(small) == 2
+
+
+def test_wide_ic_spills_to_the_right_half_way():
+    pins, _ = make_symbol("IC", [str(i) for i in range(1, 17)])
+    left = [p for p in pins if p[1] < 0]
+    right = [p for p in pins if p[1] > 0]
+    assert len(left) == 8 and len(right) == 8
+    assert pin_names(left) == [str(i) for i in range(1, 9)]
+
+
+def test_connector_is_a_pin_strip():
+    """J1 has 15 pins; alternating them left and right made it unreadable."""
+    pins, _ = make_symbol("CONN", [str(i) for i in range(1, 16)])
+    assert all(p[1] < 0 for p in pins)
+    assert pin_names(pins) == [str(i) for i in range(1, 16)]
 
 
 def test_parts_with_the_same_signature_share_one_symbol():

@@ -361,3 +361,53 @@ SECTIONS["S9_output"] = {
   ("CHASSIS",["RGF.1","R36.2"]),
  ],
 }
+
+
+# ---------------------------------------------------------------- roles ----
+# Which pin is the base, which is the output. Read off the drawing and the net
+# names, because the alternative -- inferring a pin's role from its position in
+# the declaration above -- is wrong for every part whose pins are numbered
+# rather than named. It had U1A's output on the left, U4A's collector in the
+# base slot, and Q7's grounded source where its gate should be.
+#
+# Vocabulary: amplifiers use out / in- / in+ / v+ / v-, bipolars b / c / e,
+# field-effect g / d / s. Pins not named here are still drawn; they just carry
+# no special position.
+#
+# Parts whose pins are already named B/C/E or D/G/S need no entry -- the name
+# is the role. That leaves the sixteen below.
+ROLES = {
+    # U1 is an 8-pin dual: 1/2/3 = out/in-/in+, 5/6/7 = in+/in-/out, 4/8 = rails.
+    "U1A": {"out": "1", "in-": "2", "in+": "3"},
+    "U1B": {"v-": "4", "in+": "5", "in-": "6", "out": "7", "v+": "8"},
+    "U9B": {"in+": "5", "in-": "6", "out": "7"},
+    "U9A": {"out": "1", "in-": "2", "in+": "3", "v-": "4", "v+": "8"},
+    "U8A": {"out": "1", "in-": "2", "in+": "3"},
+    "U8B": {"v-": "4", "in+": "5", "in-": "6", "out": "7", "v+": "8"},
+
+    # U2 is a quad: sections at 1/2/3, 5/6/7, 8/9/10, 12/13/14.
+    "U2A": {"out": "1", "in-": "2", "in+": "3"},   # 1 and 2 tied: unity follower
+    "U2C": {"out": "8", "in-": "9", "in+": "10"},
+    "U2B": {"in+": "12", "in-": "13", "out": "14"},
+
+    # U3 comparator: pin 13 is the output -- S2_avamp names that node N_U3_OUT.
+    "U3":  {"in+": "10", "in-": "11", "out": "13"},
+
+    # U4 is a transistor array. The base is the middle pin of each section;
+    # A and B run collector-base-emitter, C and D run emitter-base-collector.
+    "U4A": {"c": "12", "b": "13", "e": "14"},
+    "U4B": {"c": "1",  "b": "2",  "e": "3"},
+    "U4C": {"e": "8",  "b": "9",  "c": "10"},
+    "U4D": {"e": "5",  "b": "6",  "c": "7"},
+
+    # Q6/Q7 are transcribed S/D/E, but the gate is the pin the drawing calls
+    # "E" -- S7_moddemod names those nodes N_Q6_GATE and N_Q7_GATE.
+    "Q7":  {"s": "S", "d": "D", "g": "E"},
+    "Q6":  {"s": "S", "d": "D", "g": "E"},
+}
+
+# A pin already named for its role needs no table entry.
+ROLE_FROM_PIN_NAME = {
+    "B": "b", "C": "c", "E": "e",
+    "G": "g", "D": "d", "S": "s",
+}

@@ -34,7 +34,8 @@ class Segment:
 
 def pin_geometry(symbol, origin, pin):
     """Return ``(px, py, ex, ey)``: the pin's connection point and stub end."""
-    for (pn, dx, dy, rot) in symbol["pins"]:
+    for entry in symbol["pins"]:
+        pn, dx, dy, rot = entry[0], entry[1], entry[2], entry[3]
         if pn == pin:
             cx, cy = origin[0] + dx, origin[1] + dy
             sx, sy = STUB_DIR[rot]

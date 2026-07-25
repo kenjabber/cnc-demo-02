@@ -37,6 +37,9 @@ MAIN_SHEET = "main"
 FRAME_W, FRAME_H = 387.35, 271.78
 FRAME_COLS, FRAME_ROWS = 8, 5
 SHEET_PER_ROW = 8
+# Taller than the grid placer's pitch: real symbols are bigger than the old
+# featureless boxes, and J1's 15-pin strip is 35.6 mm on its own.
+SHEET_ROW_H = 38.1
 # Inset far enough that a left-hand pin stub (12.7 mm) and the rail symbol that
 # may terminate it clear the frame border and its column labels.
 SHEET_X0, SHEET_Y0 = 33.02, 236.22
@@ -172,6 +175,6 @@ class SheetPlacer:
                 col, row = i % SHEET_PER_ROW, i // SHEET_PER_ROW
                 placement.put(ref,
                               SHEET_X0 + col * COL_W,
-                              SHEET_Y0 - row * ROW_H,
+                              SHEET_Y0 - row * SHEET_ROW_H,
                               key)
         return placement
