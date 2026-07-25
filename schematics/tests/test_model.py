@@ -3,7 +3,6 @@
 import pytest
 
 from sd_schematic.model import (
-    PER_ROW,
     ShortedRailsError,
     build_design,
     build_nets,
@@ -142,18 +141,6 @@ def test_pin_discovery_order_is_deterministic():
         build_nets(sections, parts)
         runs.append(parts["U1"]["pins"])
     assert runs[0] == runs[1] == ["7", "14", "2"]
-
-
-def test_placement_grid_wraps_and_never_overlaps(design):
-    positions = list(design.placement.values())
-    assert len(positions) == len(set(positions)), "two parts share a point"
-    assert len(design.placement) == len(design.parts)
-
-    # each section's band is a PER_ROW-wide grid
-    for sname, _, _ in design.bands:
-        refs = [r for r, p in design.parts.items() if p["section"] == sname]
-        xs = {design.placement[r][0] for r in refs}
-        assert len(xs) <= PER_ROW
 
 
 def test_build_design_does_not_mutate_the_source_sections():

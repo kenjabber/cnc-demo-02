@@ -43,27 +43,13 @@ NOTES = {
 # Preferred names when a merged node carries several: power and ground first.
 GLOBAL_ORDER = ["GND", "BUSCOM", "CHASSIS", "P15", "N15", "P100"]
 
-# Section layout order and titles for the placement grid.
-SECTION_ORDER = ["S1_input", "S4_comp", "S2_avamp", "S3_basedrive", "S7_moddemod",
-                 "S5_supply", "S6_fault", "S8_pwmdrv", "S9_output", "extra"]
-SECTION_TITLE = {
-    "S1_input":     "INPUT / DIFF AMPLIFIER / SIG-AUX-TACH POTS",
-    "S4_comp":      "COMPENSATION, CLAMP, CURRENT LIMIT, BALANCE",
-    "S2_avamp":     "A.V. AMPLIFIER / RMS TIMER",
-    "S3_basedrive": "J1 LOGIC INPUTS / U4 DRIVE",
-    "S7_moddemod":  "TEMP SENSE, RESET LATCH, T1/T2 MOD-DEMOD",
-    "S5_supply":    "BUS & +/-15 V SENSE, OVER-VOLT / SURGE DETECT",
-    "S6_fault":     "U6/U5 FAULT LOGIC & LED ASSY",
-    "S8_pwmdrv":    "PWM / CLOCK / LOCK-OUT / DRIVERS",
-    "S9_output":    "OUTPUT H-BRIDGE, D78, J5, GROUND-FAULT SENSE",
-    "extra":        "MISC",
-}
-
-COL_W, ROW_H, PER_ROW = 43.18, 33.02, 12
-
-
 class Design:
-    """The merged design: parts, nets, and where each part sits on the sheet.
+    """The merged design: what is connected to what.
+
+    This is the electrical truth and nothing else — no geometry. Where parts
+    sit is :mod:`sd_schematic.placement`; how nets are drawn is
+    :mod:`sd_schematic.route`. Keeping them apart is what lets the layout be
+    reworked while ``netlist.csv`` stays byte-identical.
 
     Attributes
     ----------
@@ -71,16 +57,13 @@ class Design:
         refdes -> ``{"kind", "pins", "section"}``.
     nets : OrderedDict
         net name -> sorted ``[(refdes, pin), ...]``, two or more entries.
-    placement : dict
-        refdes -> ``(x, y)`` in millimetres.
     warnings : list of str
         Single-pin nets dropped during the merge.
     """
 
-    def __init__(self, parts, nets, placement, warnings):
+    def __init__(self, parts, nets, warnings):
         self.parts = parts
         self.nets = nets
-        self.placement = placement
         self.warnings = warnings
 
     @property
@@ -228,33 +211,8 @@ def natural_key(name):
     return (re.sub(r"\d+", "", name), int(re.sub(r"\D", "", name) or 0))
 
 
-def place_parts(parts):
-    """Lay parts out on a functional grid, one band per section.
-
-    Returns ``(placement, section_bands)`` where each band is
-    ``(section_name, title, y)`` for the heading text.
-    """
-    placement = {}
-    bands = []
-    y_cursor = 0.0
-    for sname in SECTION_ORDER:
-        refs = [r for r, p in parts.items() if p["section"] == sname]
-        if not refs:
-            continue
-        refs.sort(key=natural_key)
-        bands.append((sname, SECTION_TITLE[sname], y_cursor + 12.7))
-        for i, ref in enumerate(refs):
-            col, row = i % PER_ROW, i // PER_ROW
-            placement[ref] = (col * COL_W, y_cursor - row * ROW_H)
-        y_cursor -= ((len(refs) + PER_ROW - 1) // PER_ROW) * ROW_H + 25.4
-    return placement, bands
-
-
 def build_design(sections):
-    """Full pipeline: sections in, a placed and merged :class:`Design` out."""
+    """Full pipeline: sections in, one merged :class:`Design` out."""
     parts = build_parts(sections)
     nets, warnings = build_nets(sections, parts)
-    placement, bands = place_parts(parts)
-    design = Design(parts, nets, placement, warnings)
-    design.bands = bands
-    return design
+    return Design(parts, nets, warnings)

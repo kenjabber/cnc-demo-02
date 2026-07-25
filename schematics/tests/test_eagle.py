@@ -2,10 +2,9 @@
 
 import xml.etree.ElementTree as ET
 
-import pytest
-
 from sd_schematic import eagle
 from sd_schematic.model import build_design
+from sd_schematic.placement import SECTION_TITLE, GridPlacer
 from sd_schematic.sections import SECTIONS
 
 
@@ -61,9 +60,9 @@ def test_notes_reach_the_part_value(sch):
 def test_section_headings_are_drawn(sch, design):
     root = ET.fromstring(sch)
     plain = "".join(t.text or "" for t in root.findall(".//plain/text"))
-    for sname, title, _ in design.bands:
+    for sname in {p["section"] for p in design.parts.values()}:
         assert sname in plain
-        assert title in plain
+        assert SECTION_TITLE[sname] in plain
 
 
 def test_render_reports_no_missing_geometry(design):
@@ -82,8 +81,8 @@ def test_output_is_reproducible():
     assert first == second
 
 
-def test_pin_geometry_places_the_stub_off_the_pin():
-    symbol = {"pins": [("1", -7.62, 0.0, "R0"), ("2", 7.62, 0.0, "R180")]}
-    assert eagle.pin_geometry(symbol, (0.0, 0.0), "1") == pytest.approx((-7.62, 0.0, -12.7, 0.0))
-    assert eagle.pin_geometry(symbol, (10.0, 5.0), "2") == pytest.approx((17.62, 5.0, 22.7, 5.0))
-    assert eagle.pin_geometry(symbol, (0.0, 0.0), "99") is None
+def test_one_sheet_per_placement_sheet(sch):
+    """The serializer emits exactly the sheets the placer asked for."""
+    root = ET.fromstring(sch)
+    sheets = root.findall(".//sheets/sheet")
+    assert len(sheets) == len(GridPlacer().place(build_design(SECTIONS)).sheets)

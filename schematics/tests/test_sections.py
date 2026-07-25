@@ -2,7 +2,8 @@
 
 import re
 
-from sd_schematic.model import EXTRA_PARTS, SECTION_ORDER
+from sd_schematic.model import EXTRA_PARTS
+from sd_schematic.placement import SECTION_ORDER
 from sd_schematic.sections import SECTIONS
 
 REFDES = re.compile(r"^[A-Z][A-Z0-9_]*$")
