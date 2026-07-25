@@ -9,7 +9,7 @@ from .eagle import SUPPLY_RAILS
 from .eagle import render as render_sch
 from .model import build_design
 from .placement import ClusterPlacer, GridPlacer, SheetPlacer
-from .route import StubRouter
+from .route import StubRouter, TrunkRouter
 from .sections import SECTIONS
 from .validate import validate_file, validate_string
 
@@ -31,15 +31,18 @@ def _routers(placement_style):
     """The grid baseline keeps the original all-labels routing."""
     if placement_style == "grid":
         return StubRouter()
-    return StubRouter(supply_rails=SUPPLY_RAILS)
+    if placement_style == "sheets":
+        return StubRouter(supply_rails=SUPPLY_RAILS)
+    return TrunkRouter(supply_rails=SUPPLY_RAILS)
 
 
 def build(out_dir, placement="chains"):
     """Generate the ``.sch`` and netlist. Returns the paths written."""
     design = build_design(SECTIONS)
+    router = _routers(placement)
     document, warnings = render_sch(design,
                                     placer=PLACERS[placement](),
-                                    router=_routers(placement))
+                                    router=router)
 
     for w in design.warnings + warnings:
         print("WARN", w, file=sys.stderr)
@@ -51,6 +54,12 @@ def build(out_dir, placement="chains"):
     sch_path.write_text(document)
     netlist_path.write_text(netlist_mod.render(design))
 
+    declined = sorted(set(getattr(router, "declined", ())))
+    if declined:
+        # Say what was not drawn. A silent give-up reads as full coverage.
+        print("unrouted : %d nets left as labels: %s%s"
+              % (len(declined), ", ".join(declined[:6]),
+                 " ..." if len(declined) > 6 else ""), file=sys.stderr)
     print("parts    :", len(design.parts))
     print("nets     :", len(design.nets))
     print("pinrefs  :", design.pin_connections)

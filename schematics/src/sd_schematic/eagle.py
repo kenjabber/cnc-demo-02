@@ -12,7 +12,7 @@ from xml.sax.saxutils import escape
 from .geometry import LAYER_NETS, layers_xml, text, wire
 from .model import GLOBAL_ORDER, NOTES
 from .placement import ClusterPlacer
-from .route import StubRouter
+from .route import TrunkRouter
 from .symbols import (
     SUPPLY_STYLE,
     build_symbol_library,
@@ -141,11 +141,12 @@ def render(design, placer=None, router=None):
     """Return ``(document, warnings)``.
 
     Defaults to one sheet per functional section, ordered by signal chain,
-    with rail symbols for the supplies. Pass ``GridPlacer()`` and a bare
-    ``StubRouter()`` for the original single-sheet, all-labels output.
+    with rail symbols for the supplies and real wires where they can be routed.
+    Pass ``GridPlacer()`` and a bare ``StubRouter()`` for the original
+    single-sheet, all-labels output.
     """
     placer = placer or ClusterPlacer(supply_rails=SUPPLY_RAILS)
-    router = router or StubRouter(supply_rails=SUPPLY_RAILS)
+    router = router or TrunkRouter(supply_rails=SUPPLY_RAILS)
 
     symbols, sym_of = build_symbol_library(design.parts)
     placement = placer.place(design)

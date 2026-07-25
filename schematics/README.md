@@ -41,9 +41,29 @@ sweep across the middle of the sheet are where any remaining errors will be.
 
 The sheet is split into **nine A3 pages, one per functional block**, each with a
 frame so cross-reference labels resolve to a column/row. Ground and supply pins
-carry **rail symbols**; other connections are still **net labels** rather than
-routed wires. Same-named labels are electrically connected — standard EAGLE
-practice, and Fusion honours it.
+carry **rail symbols**. Most other connections are drawn as **real wires**;
+what the router declines falls back to **net labels**, which are electrically
+connected by name — standard EAGLE practice, and Fusion honours it.
+
+Labels on the sheet, as the work progressed: 627 → 488 (rail symbols) → **191**
+(routed wires).
+
+### What the router does, and does not
+
+A two-pin net is drawn as an elbow. A wider net whose pins share a row, or two
+neighbouring rows, gets a horizontal trunk in the channel between rows with a
+drop to each pin and a junction at every branch.
+
+It **declines** roughly 59 nets — those whose pins are scattered over three or
+more rows, or whose wires would lie along something already drawn — and those
+keep labels. That is deliberate: a router that always succeeds is one that draws
+nonsense. The build prints what it left unrouted rather than reporting silent
+coverage.
+
+The guarantee worth knowing is that **no two nets ever lie along each other**.
+Crossings are fine and expected; an overlap would show a connection the netlist
+does not contain, and a reader cannot tell the difference. Every pin's own 5 mm
+stub is reserved before routing starts, so that holds for declined nets too.
 
 Within a page, parts are ordered by **signal chain**: the generator builds an
 adjacency graph from the nets — excluding power and any net over six pins, which
