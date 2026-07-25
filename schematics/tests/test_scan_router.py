@@ -237,3 +237,58 @@ def test_rotated_parts_are_emitted_with_their_rotation(design):
     assert 'part="R104" gate="G$1" x=' in document
     marker = document[document.index('part="R104" gate="G$1" x='):]
     assert 'rot="R270"' in marker[:marker.index("/>")]
+
+
+def test_traced_pins_sit_where_their_wire_expects_them(design, scan_routed):
+    """A pin derived from the wire drawn to it must land exactly on it.
+
+    Anything else shows up as a step in the wire, and rounding part positions
+    onto a 2.54 mm grid was enough to put one into every run.
+
+    Only the size-variable kinds take their pin positions from the tracing --
+    a resistor keeps its standard shape, and a millimetre along its own axis
+    costs nothing because it is a longer lead, not a bend.
+    """
+    placement, sym_of, _, _, _ = scan_routed
+    from sd_schematic.model import derive_pin_offsets
+
+    checked = 0
+    for ref, pins in derive_pin_offsets().items():
+        if design.parts[ref]["kind"] not in ("BLOCK", "XFMR"):
+            continue
+        ox, oy = placement.coords[ref]
+        for pin, (dx, dy) in pins.items():
+            px, py, _, _ = pin_geometry(sym_of[ref], placement.coords[ref], pin,
+                                        placement.rot.get(ref, "R0"))
+            # The derived offset fixes the axis across the wire; the other is
+            # left on the box edge, so only one has to line up.
+            assert min(abs(px - ox - dx), abs(py - oy - dy)) < 0.01, \
+                "%s.%s drifted from its traced position" % (ref, pin)
+            checked += 1
+    assert checked >= 20, "fixture sanity: expected many traced pins"
+
+
+def test_transcribed_runs_stay_straight(scan_routed):
+    """Most traced runs are a single straight wire; none should be fussy.
+
+    Every extra segment is a bend the draughtsman did not draw, put there by
+    reconciling a pin onto a wire that missed it.
+    """
+    _, _, router, nets, _ = scan_routed
+    total = sum(len(s.wires) for n in router.from_scan for s in nets[n])
+    assert total <= 34, "%d segments -- wires have grown bends again" % total
+
+    straight = sum(1 for n in router.from_scan
+                   if sum(len(s.wires) for s in nets[n]) == 1)
+    assert straight >= 10, "only %d runs are a single wire" % straight
+
+
+def test_scan_placement_is_not_grid_snapped(design):
+    """Snapping would reintroduce the sub-millimetre steps."""
+    placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
+    from sd_schematic.sections import POSITIONS
+
+    offgrid = [r for r in POSITIONS
+               if abs(placement.coords[r][0] / 2.54
+                      - round(placement.coords[r][0] / 2.54)) > 1e-6]
+    assert offgrid, "positions look snapped to the grid again"

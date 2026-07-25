@@ -313,20 +313,26 @@ def _snap(value):
     return round(value / GRID) * GRID
 
 
-def fit_box(points, area):
+def fit_box(points, area, scale=None):
     """Map scan pixels into a sheet area, preserving aspect ratio.
 
     Scaling the axes independently would stretch the block and misrepresent
     the drawing, so the tighter of the two scales wins and the result is
     centred in the leftover space.
+
+    Pass ``scale`` to fix the millimetres per scan pixel instead of fitting.
+    That matters because pin offsets are derived from the same pixels at a
+    fixed scale: if the two disagree, every pin sits a fraction of a
+    millimetre off the wire drawn to it and the difference shows as a step.
     """
     x1, y1, x2, y2 = area
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
     span_x = max(xs) - min(xs)
     span_y = max(ys) - min(ys)
-    scale = min((x2 - x1) / span_x if span_x else float("inf"),
-                (y2 - y1) / span_y if span_y else float("inf"))
+    if scale is None:
+        scale = min((x2 - x1) / span_x if span_x else float("inf"),
+                    (y2 - y1) / span_y if span_y else float("inf"))
     if scale == float("inf"):
         scale = 1.0
     pad_x = ((x2 - x1) - span_x * scale) / 2.0
@@ -387,12 +393,18 @@ class ScanPlacer(SheetPlacer):
                 continue
 
             taken = set()
-            convert = fit_box([self.positions[r][:2] for r in known], self.area)
+            from .sections import SCAN
+
+            convert = fit_box([self.positions[r][:2] for r in known], self.area,
+                              scale=SCAN.get("mm_per_px"))
             placement.scan_transform[key] = convert
             for ref in known:
                 entry = self.positions[ref]
+                # Deliberately not snapped to the grid. A pin's position is
+                # derived from the same pixels as the wire drawn to it, so any
+                # rounding here reappears as a step in every wire.
                 x, y = convert(entry[0], entry[1])
-                x, y = self._free(_snap(x), _snap(y), taken)
+                x, y = self._free(x, y, taken)
                 placement.put(ref, x, y, key, entry[2] if len(entry) > 2 else "R0")
 
             unknown = [r for r in auto.refs_on(key) if r not in self.positions]

@@ -187,6 +187,7 @@ def make_symbol(kind, pins, roles=None):
             if tallest > 1:
                 pitch = max(pitch, extent[1] / (tallest * len(groups)))
 
+        traced = (roles or {}).get("pin_offsets") or {}
         primary, secondaries = groups[0], groups[1:]
         gap = pitch * 1.5
 
@@ -196,7 +197,7 @@ def make_symbol(kind, pins, roles=None):
             rot = "R0" if side < 0 else "R180"
             placed = []
             for i, pn in enumerate(group):
-                y = top - i * pitch
+                y = traced[pn][1] if pn in traced else top - i * pitch
                 placed.append((pn, pin_x, y, rot, DIR_PAS))
                 body.append(wire(pin_x, y, coil_x, y))
             for i in range(len(group) - 1):
@@ -254,13 +255,17 @@ def make_symbol(kind, pins, roles=None):
         pitch = 2.54
         if extent and rows > 1:
             pitch = max(2.54, round((h - 7.62) / (rows - 1) / 2.54) * 2.54)
+        # Only the offset *across* the wire causes a bend; the one along it is
+        # just a longer lead. So take the traced height for a side pin and the
+        # traced x for a top or bottom pin, and leave the other axis on the box.
+        traced = (roles or {}).get("pin_offsets") or {}
         body.append(rect(-w / 2, -h / 2, w / 2, h / 2))
         for side, names, x, direction in ((0, left, -w / 2 - PIN_STUB, DIR_IN),
                                           (1, right, w / 2 + PIN_STUB, DIR_OUT)):
             top = (len(names) - 1) * pitch / 2.0
             for i, pn in enumerate(names):
-                out.append((pn, x, top - i * pitch, "R0" if side == 0 else "R180",
-                            direction))
+                y = traced[pn][1] if pn in traced else top - i * pitch
+                out.append((pn, x, y, "R0" if side == 0 else "R180", direction))
         # Pins the drawing brings in from underneath, spread along the bottom,
         # and out of the top -- CLOCK's output leaves upward on the sheet.
         for names, y, rot, direction in ((bottom, -h / 2 - PIN_STUB, "R90", DIR_IN),
@@ -269,7 +274,8 @@ def make_symbol(kind, pins, roles=None):
                 continue
             step = w / (len(names) + 1.0)
             for i, pn in enumerate(names, start=1):
-                out.append((pn, -w / 2 + i * step, y, rot, direction))
+                x = traced[pn][0] if pn in traced else -w / 2 + i * step
+                out.append((pn, x, y, rot, direction))
 
     elif kind == "TP":
         out = [(pins[0], -7.62, 0.0, "R0", DIR_PAS)]

@@ -211,6 +211,40 @@ def natural_key(name):
     return (re.sub(r"\d+", "", name), int(re.sub(r"\D", "", name) or 0))
 
 
+def derive_pin_offsets(positions=None, wires=None, scale=None):
+    """Where each pin sits on its part, read from the traced wires.
+
+    A run records both its endpoint and the pin that endpoint lands on, so the
+    pin's offset from its part's centre is already in the data -- no separate
+    transcription needed. Spacing a block's pins evenly instead is a guess, and
+    a wrong one: it left every wire into PWM and LOCK-OUT with a few
+    millimetres of step in it, because the drawing does not space them evenly.
+
+    Returns ``{refdes: {pin: (dx_mm, dy_mm)}}``.
+    """
+    from .sections import POSITIONS, SCAN, WIRES
+
+    positions = POSITIONS if positions is None else positions
+    wires = WIRES if wires is None else wires
+    scale = SCAN["mm_per_px"] if scale is None else scale
+
+    offsets = {}
+    for runs in wires.values():
+        for start, end, points in runs:
+            for endpoint, point in ((start, points[0]), (end, points[-1])):
+                if endpoint is None:
+                    continue
+                ref, pin = endpoint.rsplit(".", 1)
+                if ref not in positions:
+                    continue
+                px, py = positions[ref][0], positions[ref][1]
+                # Scan y counts downward, sheet y upward.
+                offsets.setdefault(ref, {})[pin] = (
+                    round((point[0] - px) * scale, 3),
+                    round((py - point[1]) * scale, 3))
+    return offsets
+
+
 def resolve_roles(parts, roles_table=None, name_map=None):
     """Attach a role map to every part, and report the ones that come up short.
 
@@ -231,6 +265,7 @@ def resolve_roles(parts, roles_table=None, name_map=None):
     roles_table = ROLES if roles_table is None else roles_table
     name_map = ROLE_FROM_PIN_NAME if name_map is None else name_map
 
+    pin_offsets = derive_pin_offsets()
     warnings = []
     for ref, part in parts.items():
         declared = set(part["pins"])
@@ -254,6 +289,8 @@ def resolve_roles(parts, roles_table=None, name_map=None):
             resolved["windings"] = [list(g) for g in WINDINGS[ref]]
         if ref in BLOCK_SIDES:
             resolved["sides"] = {k: list(v) for k, v in BLOCK_SIDES[ref].items()}
+        if ref in pin_offsets:
+            resolved["pin_offsets"] = dict(pin_offsets[ref])
         if ref in EXTENTS:
             scale = SCAN["mm_per_px"]
             resolved["extent"] = (round(EXTENTS[ref][0] * scale, 3),
