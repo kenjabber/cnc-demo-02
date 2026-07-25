@@ -112,10 +112,20 @@ def test_rotation_reaches_the_placement(design):
     assert placement.rot["R73"] == "R0"
 
 
-def test_positions_belong_to_one_sheet_so_far(design):
-    """The example block is S8_pwmdrv; a stray entry elsewhere is a typo."""
+def test_positions_belong_to_transcribed_sheets(design):
+    """Transcription goes block by block; a stray entry elsewhere is a typo."""
     assignment = sheet_assignment(design)
-    assert {assignment[r] for r in POSITIONS} == {"S8_pwmdrv"}
+    assert {assignment[r] for r in POSITIONS} == {"S8_pwmdrv", "S9_output"}
+
+
+def test_a_transcribed_sheet_covers_all_its_parts(design):
+    """Half a block placed from the scan and half auto-placed reads worse than
+    either. A sheet that has been started should be finished."""
+    assignment = sheet_assignment(design)
+    for key in {assignment[r] for r in POSITIONS}:
+        parts = {r for r, k in assignment.items() if k == key}
+        missing = sorted(parts - set(POSITIONS))
+        assert not missing, "%s: no scan position for %s" % (key, ", ".join(missing))
 
 
 def test_fit_box_preserves_aspect_ratio():
