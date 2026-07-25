@@ -269,10 +269,12 @@ def make_symbol(kind, pins, roles=None):
         h = rows * 2.54 + 5.08
         w = 25.4
         extent = (roles or {}).get("extent")
+        traced = (roles or {}).get("pin_offsets") or {}
         if extent:
-            # Drawn size wins, so the traced wires meet the box instead of
-            # detouring round it. Never shrink below what the pins need.
-            w = max(w, extent[0])
+            # The drawn size is the size. Treating it as a floor kept a 25.4 mm
+            # default that swallowed the DRIVER pins, which sit 6.8 mm out.
+            needed = max([abs(v[0]) for v in traced.values()] or [0.0]) * 2.0
+            w = max(extent[0], needed)
             h = max(h, extent[1])
         # Spread the pins down the taller box rather than bunching them at the
         # top, so a traced wire meets the pin it was drawn to.
@@ -282,7 +284,6 @@ def make_symbol(kind, pins, roles=None):
         # Only the offset *across* the wire causes a bend; the one along it is
         # just a longer lead. So take the traced height for a side pin and the
         # traced x for a top or bottom pin, and leave the other axis on the box.
-        traced = (roles or {}).get("pin_offsets") or {}
         body.append(rect(-w / 2, -h / 2, w / 2, h / 2))
         for side, names, x, direction in ((0, left, -w / 2 - PIN_STUB, DIR_IN),
                                           (1, right, w / 2 + PIN_STUB, DIR_OUT)):

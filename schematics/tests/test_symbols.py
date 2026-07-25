@@ -275,3 +275,23 @@ def test_amplifier_rail_leads_reach_the_body(design):
         pin = at[roles[role]]
         assert any(abs(vx - pin[1]) < 1e-6 for vx, _, _ in verticals), \
             "%s has no lead at its own x" % role
+
+
+def test_a_block_is_the_width_the_drawing_gives_it(design):
+    """A 25.4 mm floor swallowed the DRIVER pins, which sit 6.8 mm out."""
+    import re
+
+    from sd_schematic.sections import EXTENTS, SCAN
+    from sd_schematic.symbols import build_symbol_library
+
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
+    for ref in ("DRIVER1", "DRIVER2", "PWM", "LOCKOUT"):
+        symbol = sym_of[ref]
+        xs = [abs(float(v)) for frag in symbol["body"]
+              for v in re.findall(r'x[12]="(-?[\d.]+)"', frag)]
+        drawn = EXTENTS[ref][0] * SCAN["mm_per_px"] / 2
+        # The drawn half-width, widened only if a pin would fall outside it.
+        assert drawn - 0.05 <= max(xs) <= drawn + 1.0, \
+            "%s: box half-width %.2f, drawn %.2f" % (ref, max(xs), drawn)
+        for pin in symbol["pins"]:
+            assert abs(pin[1]) <= max(xs) + 0.01, "%s.%s is outside its box" % (ref, pin[0])

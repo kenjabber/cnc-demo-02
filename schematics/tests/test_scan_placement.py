@@ -164,3 +164,31 @@ def test_wire_runs_are_orthogonal(design):
             for (x1, y1), (x2, y2) in zip(points, points[1:]):
                 assert x1 == x2 or y1 == y2, "%s: diagonal run %s->%s" % (
                     net, (x1, y1), (x2, y2))
+
+
+def test_a_series_part_with_one_traced_end_lands_on_it(design):
+    """R104's top is traced; its other end goes to ground.
+
+    Four millimetres out put it hard up against the op-amp.
+    """
+    from sd_schematic.model import derive_pin_offsets
+    from sd_schematic.route import pin_geometry
+    from sd_schematic.symbols import build_symbol_library
+
+    placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
+
+    traced = derive_pin_offsets()["R104"]
+    assert len(traced) == 1, "fixture sanity: R104 has one traced end"
+    (pin, _), = traced.items()
+    px, py, _, _ = pin_geometry(sym_of["R104"], placement.coords["R104"], pin,
+                                placement.rot.get("R104", "R0"))
+    # The wire drawn to it must start exactly there.
+    from sd_schematic.route import ScanRouter
+
+    nets, _ = ScanRouter(supply_rails=RAILS).route(design, placement, sym_of)
+    ends = set()
+    for segment in nets["N_U9_NONINV"]:
+        for x1, y1, x2, y2 in segment.wires:
+            ends |= {(round(x1, 3), round(y1, 3)), (round(x2, 3), round(y2, 3))}
+    assert (round(px, 3), round(py, 3)) in ends

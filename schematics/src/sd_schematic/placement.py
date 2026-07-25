@@ -408,6 +408,7 @@ class ScanPlacer(SheetPlacer):
                 placement.put(ref, x, y, key, entry[2] if len(entry) > 2 else "R0")
 
             self._centre_two_pin_parts(design, placement, known, convert)
+            self._align_two_pin_parts(design, placement, known)
 
             unknown = [r for r in auto.refs_on(key) if r not in self.positions]
             if unknown:
@@ -418,6 +419,34 @@ class ScanPlacer(SheetPlacer):
                 x, y = self._free(SHEET_X0 + col * COL_W, 50.8 - row * SHEET_ROW_H, taken)
                 placement.put(ref, x, y, key)
         return placement
+
+    #: Where a two-terminal symbol's pins sit, before rotation.
+    TWO_PIN_SPAN = 7.62
+
+    def _align_two_pin_parts(self, design, placement, known):
+        """Slide a series part onto the wire end the drawing gives it.
+
+        With one end traced -- R104's top, its other end going to ground --
+        the part is shifted so that pin lands exactly on the traced point.
+        Being 4 mm out put R104 hard up against the op-amp.
+        """
+        from .model import derive_pin_offsets
+        from .route import rotate_offset
+
+        offsets = derive_pin_offsets()
+        for ref in known:
+            part = design.parts[ref]
+            if len(part["pins"]) != 2 or ref not in offsets:
+                continue
+            traced = offsets[ref]
+            if len(traced) != 1:
+                continue          # both ends traced: centring handles it
+            (pin, target), = traced.items()
+            span = -self.TWO_PIN_SPAN if pin == part["pins"][0] else self.TWO_PIN_SPAN
+            ours = rotate_offset(span, 0.0, placement.rot.get(ref, "R0"))
+            x, y = placement.coords[ref]
+            placement.coords[ref] = (x + target[0] - ours[0],
+                                     y + target[1] - ours[1])
 
     def _centre_two_pin_parts(self, design, placement, known, convert):
         """Sit a series part midway between the two pins it joins.

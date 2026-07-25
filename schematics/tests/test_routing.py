@@ -189,3 +189,44 @@ def test_stub_router_still_available(design):
     nets, _ = StubRouter().route(design, placement, sym_of)
     labels = sum(len(s.labels) for segs in nets.values() for s in segs)
     assert labels == design.pin_connections
+
+
+def on_wire(px, py, wire, eps=1e-6):
+    x1, y1, x2, y2 = wire
+    if abs(y1 - y2) < eps and abs(py - y1) < eps:
+        return min(x1, x2) - eps <= px <= max(x1, x2) + eps
+    if abs(x1 - x2) < eps and abs(px - x1) < eps:
+        return min(y1, y2) - eps <= py <= max(y1, y2) + eps
+    return False
+
+
+def test_every_label_sits_on_its_own_wire(routed):
+    """A label off the wire is not attached to the net.
+
+    They were placed 0.635 mm above the wire end, which reads in Fusion as a
+    loose piece of text rather than a connection.
+    """
+    _, _, _, nets, _ = routed
+    for name, segments in nets.items():
+        for segment in segments:
+            for lx, ly, _ in segment.labels:
+                assert any(on_wire(lx, ly, w) for w in segment.wires), \
+                    "%s: label at (%.2f, %.2f) touches no wire" % (name, lx, ly)
+
+
+def test_a_rail_cluster_joins_on_one_spine(design):
+    """Stepping from pin to pin puts a dog-leg under the symbol."""
+    from sd_schematic.placement import ScanPlacer
+    from sd_schematic.route import ScanRouter
+    from sd_schematic.symbols import build_symbol_library
+
+    placement = ScanPlacer(fallback=ClusterPlacer(supply_rails=RAILS)).place(design)
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
+    nets, _ = ScanRouter(supply_rails=RAILS).route(design, placement, sym_of)
+
+    for segment in nets["P15"]:
+        if len(segment.pinrefs) < 2:
+            continue
+        verticals = {round(w[0], 3) for w in segment.wires
+                     if abs(w[0] - w[2]) < 1e-6 and abs(w[1] - w[3]) > 1e-6}
+        assert len(verticals) == 1, "cluster uses %d verticals, not one spine" % len(verticals)

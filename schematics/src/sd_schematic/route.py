@@ -294,12 +294,18 @@ class TrunkRouter:
                 cx, cy, ex, ey = geo[key]
                 segment.wires.append((cx, cy, ex, ey))
                 segment.pinrefs.append(key)
+            # Bring every member onto one vertical at the anchor's x, rather
+            # than stepping from pin to pin. Two escapes 1.7 mm apart otherwise
+            # produce a visible dog-leg under the symbol.
+            spine = anchor[2]
+            ys = [anchor[3]]
             for key in cluster[1:]:
                 _, _, ex, ey = geo[key]
-                if abs(ex - anchor[2]) > 1e-6:
-                    segment.wires.append((anchor[2], anchor[3], ex, anchor[3]))
-                if abs(ey - anchor[3]) > 1e-6:
-                    segment.wires.append((ex, anchor[3], ex, ey))
+                if abs(ex - spine) > 1e-6:
+                    segment.wires.append((ex, ey, spine, ey))
+                ys.append(ey)
+            if len(ys) > 1 and abs(max(ys) - min(ys)) > 1e-6:
+                segment.wires.append((spine, min(ys), spine, max(ys)))
             segment.supplies.append((name, anchor[2], anchor[3], "R0"))
             out.append(segment)
         return out
@@ -322,7 +328,7 @@ class TrunkRouter:
             if rail:
                 segment.supplies.append((name, ex, ey, "R0"))
             else:
-                segment.labels.append((ex, ey + 0.635, label_rotation(cx, ex)))
+                segment.labels.append((ex, ey, label_rotation(cx, ex)))
             out.append(segment)
         return out
 
@@ -372,7 +378,7 @@ class TrunkRouter:
         if not segment.wires:
             return None
         if label:
-            segment.labels.append((aex, aey + 0.635, label_rotation(apx, aex)))
+            segment.labels.append((aex, aey, label_rotation(apx, aex)))
         return segment
 
     def _route_piece(self, sheet, pinrefs, placement, sym_of, channels, label):
@@ -429,7 +435,7 @@ class TrunkRouter:
         for x in xs[1:-1]:
             segment.junctions.append((x, round(track, 3)))
         if label:
-            segment.labels.append((xs[0], track + 0.635, "R180"))
+            segment.labels.append((xs[0], track, "R180"))
         return segment
 
     def _claim_track(self, channels, key, x1, x2, row_y):
@@ -476,7 +482,7 @@ class StubRouter:
                 if is_rail:
                     segment.supplies.append((name, ex, ey, "R0"))
                 else:
-                    segment.labels.append((ex, ey + 0.635, label_rotation(cx, ex)))
+                    segment.labels.append((ex, ey, label_rotation(cx, ex)))
                 segments.append(segment)
             if segments:
                 routed[name] = segments
