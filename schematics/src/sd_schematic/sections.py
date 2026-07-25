@@ -462,3 +462,23 @@ POSITIONS = {
 # no WIRES may well read worse than the auto-placed, auto-routed one. The two
 # want to land together.
 WIRES = {}
+
+
+# ------------------------------------------------------------- windings ----
+# Which pins belong to which coil, so a transformer can be drawn as coupled
+# windings rather than as an anonymous box. Order within a group is the order
+# down the coil, so a centre tap sits in the middle.
+#
+# T3 and T4 are certain: pins 1/2/3 are the primary with pin 2 the centre tap
+# -- it lands on N_XFMR_CT alongside both DRIVER centre taps and R137 -- and
+# 4/5/6 and 7/8/9 are the two secondaries, each with its middle pin feeding a
+# base resistor and its outer pins feeding a diode pair.
+#
+# T1 and T2 are inferred from the same numbering convention rather than from a
+# giveaway net, so they are the ones to check against the scan.
+WINDINGS = {
+    "T1": [["1", "2"], ["3", "4"]],
+    "T2": [["1", "2", "3"], ["4", "5", "6"]],
+    "T3": [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]],
+    "T4": [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]],
+}

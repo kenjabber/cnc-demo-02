@@ -219,7 +219,7 @@ def resolve_roles(parts, roles_table=None, name_map=None):
     guessing a role from a pin's position in the declaration is what drew
     U1A's output on the left and put U4A's collector in the base slot.
     """
-    from .sections import ROLE_FROM_PIN_NAME, ROLES
+    from .sections import ROLE_FROM_PIN_NAME, ROLES, WINDINGS
 
     roles_table = ROLES if roles_table is None else roles_table
     name_map = ROLE_FROM_PIN_NAME if name_map is None else name_map
@@ -243,6 +243,8 @@ def resolve_roles(parts, roles_table=None, name_map=None):
             if role and role not in resolved and pin not in claimed:
                 resolved[role] = pin
                 claimed.add(pin)
+        if ref in WINDINGS:
+            resolved["windings"] = [list(g) for g in WINDINGS[ref]]
         part["roles"] = resolved
 
         needed = REQUIRED_ROLES.get(part["kind"])

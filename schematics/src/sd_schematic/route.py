@@ -246,11 +246,18 @@ class TrunkRouter:
         drop_x = self._drop_x(b, placement) if bvert else bex
 
         segment = Segment(sheet=sheet, pinrefs=[(aref, apin), (bref, bpin)])
-        segment.wires.append((apx, apy, aex, aey))
+        if avert:
+            segment.wires.append((apx, apy, aex, aey))
+        elif abs(drop_x - apx) > 1e-6:
+            # One wire from the pin to the turn, rather than the escape stub
+            # plus a leg back over it. When the turn lies behind the escape,
+            # emitting both draws a T at the pin that is only the wire
+            # doubling back on itself.
+            segment.wires.append((apx, apy, drop_x, apy))
         segment.wires.append((bpx, bpy, bex, bey))
         if bvert:
             segment.wires.append((bex, bey, drop_x, bey))
-        if abs(aex - drop_x) > 1e-6:
+        if avert and abs(aex - drop_x) > 1e-6:
             segment.wires.append((aex, aey, drop_x, aey))
         if abs(aey - bey) > 1e-6:
             segment.wires.append((drop_x, aey, drop_x, bey))

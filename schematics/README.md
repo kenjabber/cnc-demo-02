@@ -121,6 +121,24 @@ No component **values** are on the original — it's a simplified schematic show
 reference designators only. `>VALUE` therefore shows a note where there is one
 and nothing otherwise; the part kind lives in the deviceset description.
 
+### Symbols
+
+Amplifiers are triangles, bipolars carry an emitter arrow, FETs a gate bar or
+gate arrow, connectors are pin strips, and the drawing's named function blocks
+(`PULSE WIDTH MODULATOR`, `LOCK-OUT CIRCUIT`, `CLOCK`, …) are titled boxes with
+the name inside, as the original draws them.
+
+Transformers are drawn as coupled windings. Which pins share a coil comes from
+`WINDINGS` in `sections.py`, not from pin order. `T3`/`T4` are certain — pin 2
+lands on `N_XFMR_CT` alongside both driver centre taps, so 1/2/3 is a
+centre-tapped primary and 4/5/6, 7/8/9 the secondaries. `T1` and `T2` are
+inferred from the same numbering convention rather than from a giveaway net, so
+they are the ones to check against the scan.
+
+Still plain rectangles: `U5`, `U6`, `U7A`–`U7D` (correct — they are multi-pin
+logic with no better symbol, and their pins now run down one side in order),
+plus `JMP1` and `S1`, which could take a jumper and a momentary-switch symbol.
+
 ### Pin roles
 
 Which pin is a base and which is an output is recorded in `ROLES` in

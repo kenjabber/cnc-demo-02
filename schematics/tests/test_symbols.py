@@ -1,5 +1,8 @@
 """Symbol geometry and library sharing."""
 
+import pytest
+
+
 from sd_schematic.symbols import build_symbol_library, make_symbol, signature, symbol_xml
 
 
@@ -122,3 +125,54 @@ def test_symbol_xml_carries_name_and_value_placeholders():
 def test_real_design_reuses_symbols_heavily(design):
     symbols, _ = build_symbol_library(design.parts)
     assert len(symbols) < len(design.parts) / 4
+
+
+def test_transformer_is_drawn_as_coupled_windings():
+    """T3's primary is 1/2/3 with pin 2 the centre tap; 4-6 and 7-9 secondary."""
+    windings = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
+    pins, body = make_symbol("XFMR", [p for g in windings for p in g],
+                             {"windings": windings})
+    at = {p[0]: p for p in pins}
+    assert all(at[p][1] < 0 for p in ("1", "2", "3")), "primary on the left"
+    assert all(at[p][1] > 0 for p in ("4", "5", "6", "7", "8", "9")), "secondaries right"
+    assert at["2"][2] == pytest.approx(0.0), "centre tap between its outer pins"
+    assert at["1"][2] > at["2"][2] > at["3"][2], "pins run down the coil in order"
+    assert at["6"][2] > at["7"][2], "the two secondaries do not overlap"
+    assert 'curve=' in "".join(body), "coils, not straight lines"
+
+
+def test_transformer_without_windings_still_draws():
+    pins, _ = make_symbol("XFMR", ["1", "2"], {})
+    assert len(pins) == 2
+
+
+def test_named_block_puts_its_pins_by_direction():
+    pins, _ = make_symbol("BLOCK", ["IN", "OUT"], {})
+    at = {p[0]: p for p in pins}
+    assert at["IN"][1] < 0 and at["IN"][4] == "in"
+    assert at["OUT"][1] > 0 and at["OUT"][4] == "out"
+
+
+def test_named_block_keeps_numbered_pins_on_the_left():
+    pins, _ = make_symbol("BLOCK", ["1", "2", "3", "4"], {})
+    assert all(p[1] < 0 for p in pins)
+    assert pin_names(pins) == ["1", "2", "3", "4"]
+
+
+def test_block_name_is_drawn_inside_the_box():
+    """The original names these blocks rather than drawing them out."""
+    from sd_schematic.symbols import symbol_xml
+
+    block = {"name": "B_1", "kind": "BLOCK", "pins": [("1", -15.24, 0.0, "R0", "in")],
+             "body": []}
+    other = dict(block, kind="IC")
+    assert '<text x="-10.160" y="-0.889"' in symbol_xml(block)
+    assert '<text x="-5.080" y="9.000"' in symbol_xml(other)
+
+
+def test_signature_survives_a_winding_map():
+    """Role values may be nested lists; the symbol key must still hash."""
+    a = {"kind": "XFMR", "pins": ["1", "2"], "roles": {"windings": [["1"], ["2"]]}}
+    b = {"kind": "XFMR", "pins": ["1", "2"], "roles": {"windings": [["1", "2"]]}}
+    assert signature(a) != signature(b)
+    assert hash(signature(a))

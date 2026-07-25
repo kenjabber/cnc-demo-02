@@ -7,7 +7,16 @@ generated library stays small. Coordinates are millimetres on a 2.54 mm grid.
 from collections import OrderedDict, defaultdict
 from xml.sax.saxutils import escape
 
-from .geometry import LAYER_NAMES, LAYER_VALUES, circle, poly, rect, text, wire
+from .geometry import (
+    LAYER_NAMES,
+    LAYER_VALUES,
+    arc,
+    circle,
+    poly,
+    rect,
+    text,
+    wire,
+)
 
 # Kinds drawn with the standard two horizontal terminals.
 TWO_PIN = {"R", "C", "CPOL", "D", "ZENER", "LED"}
@@ -166,6 +175,55 @@ def make_symbol(kind, pins, roles=None):
             out.append((pn, -7.62, y, "R0", DIR_PAS))
             body.append(rect(-4.318, y - 0.635, -3.048, y + 0.635))
 
+    elif kind == "XFMR":
+        # Coupled windings either side of a laminated core. Which pins share a
+        # coil comes from the WINDINGS table -- guessing it from pin order is
+        # the same mistake positional roles were.
+        groups = (roles or {}).get("windings") or [list(pins)]
+        pitch = 2.54
+        height = max((len(g) - 1) * pitch for g in groups) or pitch
+        body.append(wire(-0.635, height / 2 + 1.27, -0.635, -height / 2 - 1.27))
+        body.append(wire(0.635, height / 2 + 1.27, 0.635, -height / 2 - 1.27))
+
+        right_top = height / 2
+        for index, group in enumerate(groups):
+            left = index == 0
+            side = -1 if left else 1
+            coil_x = side * 2.54
+            pin_x = side * 10.16
+            rot = "R0" if left else "R180"
+            if left:
+                top = (len(group) - 1) * pitch / 2
+            else:
+                top = right_top
+                right_top -= (len(group) - 1) * pitch + pitch * 1.5
+            for i, pn in enumerate(group):
+                y = top - i * pitch
+                out.append((pn, pin_x, y, rot, DIR_PAS))
+                body.append(wire(pin_x, y, coil_x, y))
+            for i in range(len(group) - 1):
+                y = top - i * pitch
+                # Bulge away from the core, so the two coils read as separate.
+                body.append(arc(coil_x, y, coil_x, y - pitch, -180.0 * side))
+
+    elif kind == "BLOCK":
+        # The drawing names these rather than drawing them out: PULSE WIDTH
+        # MODULATOR, LOCK-OUT CIRCUIT, CLOCK. Keep that, but put the name
+        # inside the box the way the original does.
+        named = [p for p in pins if not p.isdigit()]
+        numbered = [p for p in pins if p.isdigit()]
+        left = [p for p in named if p.upper().startswith("IN")] + numbered
+        right = [p for p in named if p.upper().startswith("OUT")]
+        rows = max(len(left), len(right), 2)
+        h = rows * 2.54 + 5.08
+        w = 25.4
+        top = h / 2 - 3.81
+        body.append(rect(-w / 2, -h / 2, w / 2, h / 2))
+        for i, pn in enumerate(left):
+            out.append((pn, -w / 2 - PIN_STUB, top - i * 2.54, "R0", DIR_IN))
+        for i, pn in enumerate(right):
+            out.append((pn, w / 2 + PIN_STUB, top - i * 2.54, "R180", DIR_OUT))
+
     elif kind == "TP":
         out = [(pins[0], -7.62, 0.0, "R0", DIR_PAS)]
         body.append(wire(-7.62, 0, -3.81, 0))
@@ -199,8 +257,14 @@ def signature(part):
     Roles are part of it: two parts with identical pin names but different
     roles are different symbols, and must not be collapsed into one.
     """
+    def freeze(value):
+        if isinstance(value, (list, tuple)):
+            return tuple(freeze(v) for v in value)
+        return value
+
     roles = part.get("roles") or {}
-    return (part["kind"], tuple(part["pins"]), tuple(sorted(roles.items())))
+    return (part["kind"], tuple(part["pins"]),
+            tuple(sorted((k, freeze(v)) for k, v in roles.items())))
 
 
 def build_symbol_library(parts):
@@ -218,7 +282,8 @@ def build_symbol_library(parts):
             pinlist, body = make_symbol(p["kind"], p["pins"], p.get("roles"))
             kind_count[p["kind"]] += 1
             name = "%s_%d" % (p["kind"], kind_count[p["kind"]])
-            symbols[key] = {"name": name, "pins": pinlist, "body": body, "kind": p["kind"]}
+            symbols[key] = {"name": name, "pins": pinlist, "body": body,
+                            "kind": p["kind"]}
         sym_of[ref] = symbols[key]
     return symbols, sym_of
 
@@ -229,9 +294,13 @@ def symbol_xml(symbol):
         '<pin name="%s" x="%.3f" y="%.3f" visible="pin" length="short" '
         'direction="%s" rot="%s"/>' % (escape(pn), px, py, direction, rot)
         for (pn, px, py, rot, direction) in symbol["pins"])
+    # A named function block carries its name inside the box, as the drawing
+    # does; everything else labels above the symbol.
+    inside = symbol["kind"] == "BLOCK"
+    name_xy = (-10.16, -0.889) if inside else (-5.08, 9.0)
     return '<symbol name="%s">%s%s%s%s</symbol>' % (
         symbol["name"], "".join(symbol["body"]),
-        text(-5.08, 9.0, ">NAME", 1.778, LAYER_NAMES),
+        text(name_xy[0], name_xy[1], ">NAME", 1.778, LAYER_NAMES),
         text(-5.08, -11.0, ">VALUE", 1.778, LAYER_VALUES),
         pins)
 

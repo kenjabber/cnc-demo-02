@@ -30,6 +30,12 @@ def wire(x1, y1, x2, y2, layer=LAYER_SYMBOLS, width=0.254):
         x1, y1, x2, y2, width, layer)
 
 
+def arc(x1, y1, x2, y2, curve, layer=LAYER_SYMBOLS, width=0.254):
+    """A curved wire. EAGLE takes the bulge as a signed sweep in degrees."""
+    return ('<wire x1="%.3f" y1="%.3f" x2="%.3f" y2="%.3f" width="%s" '
+            'curve="%.1f" layer="%d"/>' % (x1, y1, x2, y2, width, curve, layer))
+
+
 def rect(x1, y1, x2, y2):
     return "".join([wire(x1, y1, x2, y1), wire(x2, y1, x2, y2),
                     wire(x2, y2, x1, y2), wire(x1, y2, x1, y1)])
