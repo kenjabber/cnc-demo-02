@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sd-schematic"
+version = "0.1.0"
+description = "Generates an EAGLE/Fusion schematic for the Servo Dynamics SD1015/SD1525 drive, sheet 2"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+sd-schematic = "sd_schematic.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sd_schematic"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

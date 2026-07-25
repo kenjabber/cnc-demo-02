@@ -1,0 +1,42 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Schematic: build + validate (F5)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "sd_schematic",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Schematic: build only",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "sd_schematic",
+            "args": [
+                "build"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Schematic: validate existing .sch",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "sd_schematic",
+            "args": [
+                "validate"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
