@@ -159,8 +159,10 @@ def render(design, placer=None, router=None):
         plain += "".join(text(x, y, s, size, layer) for x, y, s, size, layer in sheet.texts)
 
         inst = "".join(
-            '<instance part="%s" gate="G$1" x="%.3f" y="%.3f"/>'
-            % (ref, placement.coords[ref][0], placement.coords[ref][1])
+            '<instance part="%s" gate="G$1" x="%.3f" y="%.3f"%s/>'
+            % (ref, placement.coords[ref][0], placement.coords[ref][1],
+               '' if placement.rot.get(ref, "R0") == "R0"
+               else ' rot="%s"' % placement.rot[ref])
             for ref in placement.refs_on(sheet.key))
         inst += "".join(
             '<instance part="%s" gate="G$1" x="%.3f" y="%.3f" rot="%s"/>' % (name, x, y, rot)

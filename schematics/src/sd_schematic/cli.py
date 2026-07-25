@@ -9,7 +9,7 @@ from .eagle import SUPPLY_RAILS
 from .eagle import render as render_sch
 from .model import build_design
 from .placement import ClusterPlacer, GridPlacer, ScanPlacer, SheetPlacer
-from .route import StubRouter, TrunkRouter
+from .route import ScanRouter, StubRouter, TrunkRouter
 from .sections import SECTIONS
 from .validate import validate_file, validate_string
 
@@ -34,6 +34,8 @@ def _routers(placement_style):
         return StubRouter()
     if placement_style == "sheets":
         return StubRouter(supply_rails=SUPPLY_RAILS)
+    if placement_style == "scan":
+        return ScanRouter(supply_rails=SUPPLY_RAILS)
     return TrunkRouter(supply_rails=SUPPLY_RAILS)
 
 
@@ -55,6 +57,11 @@ def build(out_dir, placement="chains"):
     sch_path.write_text(document)
     netlist_path.write_text(netlist_mod.render(design))
 
+    from_scan = sorted(getattr(router, "from_scan", ()))
+    if from_scan:
+        print("from scan: %d nets drawn as the original draws them: %s%s"
+              % (len(from_scan), ", ".join(from_scan[:5]),
+                 " ..." if len(from_scan) > 5 else ""), file=sys.stderr)
     declined = sorted(set(getattr(router, "declined", ())))
     if declined:
         # Say what was not drawn. A silent give-up reads as full coverage.

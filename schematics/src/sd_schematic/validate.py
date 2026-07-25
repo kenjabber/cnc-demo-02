@@ -9,6 +9,7 @@ import math
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 
+from .route import rotate_offset
 from .symbols import SUPPLY_PREFIX
 
 
@@ -146,8 +147,14 @@ def _validate(root):
                     report.errors.append("net %s: %s has no pin %s (has %s)"
                                          % (name, part, pin, sorted(pins)))
                     continue
-                ix, iy = float(instances[part].get("x")), float(instances[part].get("y"))
-                px, py = ix + pins[pin][0], iy + pins[pin][1]
+                instance = instances[part]
+                ix, iy = float(instance.get("x")), float(instance.get("y"))
+                # The instance rotation turns the pin offset with it. Reading
+                # the offset raw put every pin of a rotated part in the wrong
+                # place -- which is what this check exists to notice.
+                dx, dy = rotate_offset(pins[pin][0], pins[pin][1],
+                                       instance.get("rot", "R0"))
+                px, py = ix + dx, iy + dy
                 if not any(math.hypot(ex - px, ey - py) <= 1e-6 for ex, ey in ends):
                     report.errors.append(
                         "net %s: no wire end at %s.%s (%.3f,%.3f)" % (name, part, pin, px, py))
@@ -196,3 +203,120 @@ def _validate(root):
         "labels": sum(len(n.findall(".//label")) for _, n in nets),
     }
     return report
+
+
+# --------------------------------------------------- geometry cross-check ---
+def check_scan_geometry(design, wires=None, positions=None):
+    """Compare transcribed wire geometry against the merged netlist.
+
+    This is the reason to transcribe geometry at all, beyond looking like the
+    original. Connectivity on its own has no redundancy: a misread wire yields
+    a plausible netlist and nothing contradicts it, which is exactly how C8
+    shorted the -15 V rail to ground and went unnoticed. Wire runs are a second,
+    independent reading of the same drawing. Where the two disagree, one of them
+    is wrong, and you have found a transcription error instead of a layout
+    preference.
+
+    Returns a list of error strings; empty means the two records agree.
+    """
+    from .sections import POSITIONS, WIRES
+
+    wires = WIRES if wires is None else wires
+    positions = POSITIONS if positions is None else positions
+    errors = []
+
+    owner = {}
+    for net, runs in wires.items():
+        if net not in design.nets:
+            errors.append("geometry names net %s, which the netlist does not have" % net)
+            continue
+        expected = set(design.nets[net])
+        reached = set()
+
+        for start, end, points in runs:
+            if len(points) < 2:
+                errors.append("%s: a run needs at least two points" % net)
+            for (x1, y1), (x2, y2) in zip(points, points[1:]):
+                if x1 != x2 and y1 != y2:
+                    errors.append("%s: run is diagonal at (%d,%d)" % (net, x1, y1))
+            for endpoint in (start, end):
+                if endpoint is None:
+                    continue
+                ref, pin = endpoint.rsplit(".", 1)
+                if ref not in design.parts:
+                    errors.append("%s: run ends on unknown part %s" % (net, ref))
+                    continue
+                if pin not in design.parts[ref]["pins"]:
+                    errors.append("%s: %s has no pin %s" % (net, ref, pin))
+                    continue
+                if (ref, pin) not in expected:
+                    # The disagreement worth having: the drawing runs a wire
+                    # from this pin, the netlist puts the pin somewhere else.
+                    errors.append(
+                        "%s: geometry runs a wire to %s, but the netlist puts "
+                        "that pin on %s" % (net, endpoint, _net_of(design, ref, pin)))
+                    continue
+                if owner.get((ref, pin), net) != net:
+                    errors.append("%s: %s is also drawn on %s"
+                                  % (net, endpoint, owner[(ref, pin)]))
+                owner[(ref, pin)] = net
+                reached.add((ref, pin))
+
+        transcribed = {p for p in expected if p[0] in positions}
+        if transcribed and reached != transcribed:
+            missing = sorted(transcribed - reached)
+            if missing:
+                errors.append("%s: no run reaches %s"
+                              % (net, ", ".join("%s.%s" % m for m in missing)))
+
+        if not _runs_are_connected(runs):
+            errors.append("%s: its runs do not join up" % net)
+
+    return errors
+
+
+def _net_of(design, ref, pin):
+    for name, pins in design.nets.items():
+        if (ref, pin) in pins:
+            return name
+    return "no net"
+
+
+def _touches(a, b):
+    """Do two runs of the same net meet?
+
+    At a shared point, in a T part-way along, or at a crossing — within one net
+    all three are connections.
+    """
+    from .route import crossing, on_segment
+
+    pa = [tuple(p) for p in a]
+    pb = [tuple(p) for p in b]
+    if set(pa) & set(pb):
+        return True
+    for points, other in ((pa, pb), (pb, pa)):
+        for point in points:
+            for u, v in zip(other, other[1:]):
+                if on_segment(point, u, v):
+                    return True
+    for u1, v1 in zip(pa, pa[1:]):
+        for u2, v2 in zip(pb, pb[1:]):
+            if crossing((u1[0], u1[1], v1[0], v1[1]),
+                        (u2[0], u2[1], v2[0], v2[1])) is not None:
+                return True
+    return False
+
+
+def _runs_are_connected(runs):
+    """Every run must reach the others. A lone run is trivially fine."""
+    if len(runs) < 2:
+        return True
+    paths = [pts for _, _, pts in runs]
+    seen, stack = {0}, [0]
+    while stack:
+        i = stack.pop()
+        for j, other in enumerate(paths):
+            if j not in seen and _touches(paths[i], other):
+                seen.add(j)
+                stack.append(j)
+    return len(seen) == len(runs)

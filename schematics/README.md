@@ -109,13 +109,59 @@ The `POSITIONS` currently in the file are **one block only and approximate** —
 read off a full-page render rather than at transcription zoom. They are a worked
 example of the mechanism, not verified data.
 
-Two honest limits. Within-sheet fidelity is achievable; the relationships
-*between* blocks and the long horizontal buses cannot survive the split into
-nine sheets. And positions alone say where parts sit, not how the draughtsman
-ran the wires between them — the router's channel assumptions do not survive
-arbitrary placement, so a block placed from `POSITIONS` with no `WIRES` may read
-worse than the auto-placed, auto-routed one. `WIRES` is reserved for traced
-polylines; the two want to land together.
+### Drawing the wires the draughtsman drew
+
+`WIRES` holds the traced runs, in the same scan pixel space, each naming the
+pins its ends land on:
+
+```python
+"N_XFMR_CT": [
+    (None, "C61.1", [(3561, 2550), (3561, 3238)]),      # the centre-tap spine
+    ("DRIVER1.3", "T4.2", [(3515, 2550), (3584, 2550)]),
+    ...
+],
+```
+
+`ScanRouter` draws those instead of routing. It is not a router taking hints
+from the scan — it is the scan replacing the router, bends and all. Nets with no
+transcribed runs fall through to `TrunkRouter`, so this is incremental in the
+same way the positions are.
+
+One wrinkle is unavoidable: the generated symbols are not the 1985 symbols, so a
+traced run ends up *near* its pin rather than on it. Each run is reconciled onto
+the real pin, keeping the direction it was heading, so the correction appears as
+a short elbow rather than a diagonal.
+
+Within one net, wires that cross **are** connected, and get a junction dot.
+Reading a crossing as no-connection when it should be a junction is the commonest
+way to misread a hand-drafted schematic — this drawing does it to itself in
+places, which the original audit notes.
+
+### Geometry as a cross-check
+
+This is the part worth more than the appearance. Connectivity on its own has no
+redundancy: a misread wire yields a plausible netlist and nothing contradicts it.
+That is exactly how C8 shorted the −15 V rail to ground unnoticed.
+
+Traced runs are a second, independent reading of the same drawing, so the two can
+be made to disagree out loud. `check_scan_geometry()` reports when a run ends on
+a pin the netlist puts on a different net, when a net's pins are not all reached,
+when a run is diagonal, and when a net's runs do not join up. The first of those
+is the C8 shape, and a test proves it fires:
+
+```
+N_U9_OUT: geometry runs a wire to R104.2, but the netlist puts that pin on GND
+```
+
+### State of the transcription
+
+`S8_pwmdrv` is done properly — 16 parts with positions and rotations, all 15 of
+its local nets traced, read at 8× zoom. `--placement scan` draws that block as
+the original draws it and auto-places the other eight.
+
+The remaining honest limits: relationships *between* blocks and the long
+horizontal buses cannot survive the split into nine sheets, and the other eight
+blocks are still auto-placed.
 
 No component **values** are on the original — it's a simplified schematic showing
 reference designators only. `>VALUE` therefore shows a note where there is one

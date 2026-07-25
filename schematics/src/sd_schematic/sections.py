@@ -430,38 +430,94 @@ SCAN = {
     "y_down": True,
 }
 
-# refdes -> (x_px, y_px)
+# refdes -> (x_px, y_px) or (x_px, y_px, rotation).
 #
-# APPROXIMATE, AND ONLY ONE BLOCK. These were read off a full-page render, not
-# at the high zoom the netlist was transcribed at, so treat them as a worked
-# example of the mechanism rather than as verified data -- roughly +/-100 px,
-# which is a few millimetres on the drawn sheet. Placement never affects the
-# netlist, so an error here is cosmetic. Refine at zoom before trusting the
-# arrangement, and delete any entry you cannot confirm.
+# S8_pwmdrv is transcribed properly, read at 8x zoom off the modulator chain
+# along the bottom of the sheet. Rotation is EAGLE's: R270 turns a part so its
+# pin 1 points up, which is how the drawing stands R104 and the two electrolytics
+# on end above their ground symbols.
 POSITIONS = {
-    # S8_pwmdrv -- the modulator chain, drawn left to right along the bottom of
-    # the sheet: U9 -> PULSE WIDTH MODULATOR -> LOCK-OUT CIRCUIT -> DRIVERs,
-    # with CLOCK feeding the modulator from below.
-    "R94":     (2110, 2503),
-    "R95":     (2110, 2604),
-    "U9A":     (2218, 2621),
-    "R104":    (2201, 2688),
-    "CLOCK":   (2271, 2855),
-    "PWM":     (2513, 2688),
-    "R73":     (2728, 2654),
-    "R76":     (2728, 2782),
-    "LOCKOUT": (2930, 2688),
-    "DRIVER1": (3494, 2537),
-    "DRIVER2": (3494, 2728),
+    "R94":     (2127, 2490),
+    "R95":     (2127, 2558),
+    "U9A":     (2241, 2587),
+    "R104":    (2165, 2661, "R270"),
+    "PWM":     (2517, 2664),
+    "CLOCK":   (2273, 2859),
+    "R73":     (2706, 2590),
+    "R76":     (2706, 2736),
+    "LOCKOUT": (2937, 2664),
+    "DRIVER1": (3481, 2553),
+    "DRIVER2": (3481, 2770),
+    "T4":      (3641, 2553),
+    "T3":      (3641, 2770),
+    "R137":    (3470, 3162),
+    "C56":     (3398, 3238, "R270"),
+    "C61":     (3561, 3238, "R270"),
 }
 
-# Reserved, not yet consumed: traced wire polylines per net, in the same scan
-# pixel space. Positions alone reproduce where parts sit but not how the
-# draughtsman ran the wires between them, and the router's channel assumptions
-# do not survive arbitrary placement -- so a sheet placed from POSITIONS with
-# no WIRES may well read worse than the auto-placed, auto-routed one. The two
-# want to land together.
-WIRES = {}
+# net -> [(from_pin, to_pin, [(x_px, y_px), ...]), ...]
+#
+# One entry per drawn run, in the same scan pixel space. The endpoints name the
+# pins they land on, which is what turns this into a second, independent record
+# of connectivity: the pins these runs reach must equal the pins the netlist
+# says the net has, and where they disagree one of the two readings is wrong.
+# A run that only joins other runs -- the centre-tap spine below -- has None at
+# that end.
+#
+# The generated symbols are not the 1985 symbols, so a run's endpoint lands near
+# its pin rather than on it. ScanRouter reconciles the last stretch onto the
+# real pin; see route.py.
+WIRES = {
+    "N_U9_OUT": [
+        ("U9A.1", "PWM.1", [(2304, 2587), (2392, 2587)]),
+    ],
+    "N_CLK_OUT": [
+        ("CLOCK.1", "PWM.2", [(2273, 2793), (2273, 2739), (2392, 2739)]),
+    ],
+    "N_PWM_OUTA": [
+        ("PWM.3", "R73.1", [(2641, 2590), (2676, 2590)]),
+    ],
+    "N_R73_LO": [
+        ("R73.2", "LOCKOUT.1", [(2738, 2590), (2793, 2590)]),
+    ],
+    "N_PWM_OUTB": [
+        ("PWM.4", "R76.1", [(2641, 2736), (2676, 2736)]),
+    ],
+    "N_R76_LO": [
+        ("R76.2", "LOCKOUT.2", [(2738, 2736), (2793, 2736)]),
+    ],
+    "N_LO_OUTA": [
+        ("LOCKOUT.3", "DRIVER1.1", [(3081, 2590), (3447, 2590)]),
+    ],
+    "N_LO_OUTB": [
+        ("LOCKOUT.4", "DRIVER2.1", [(3081, 2739), (3447, 2739)]),
+    ],
+    "N_T4P3": [
+        ("DRIVER1.2", "T4.3", [(3515, 2479), (3595, 2479)]),
+    ],
+    "N_T4P1": [
+        ("DRIVER1.4", "T4.1", [(3515, 2627), (3595, 2627)]),
+    ],
+    "N_T3P3": [
+        ("DRIVER2.2", "T3.3", [(3515, 2684), (3595, 2684)]),
+    ],
+    "N_T3P1": [
+        ("DRIVER2.4", "T3.1", [(3515, 2841), (3595, 2841)]),
+    ],
+    "N_U9_SUM": [
+        ("R94.2", "U9A.2", [(2167, 2490), (2176, 2490), (2176, 2545), (2190, 2545)]),
+        ("R95.2", None, [(2167, 2558), (2176, 2558), (2176, 2545)]),
+    ],
+    "N_U9_NONINV": [
+        ("U9A.3", "R104.1", [(2188, 2636), (2165, 2636), (2165, 2644)]),
+    ],
+    "N_XFMR_CT": [
+        (None, "C61.1", [(3561, 2550), (3561, 3238)]),
+        ("DRIVER1.3", "T4.2", [(3515, 2550), (3584, 2550)]),
+        ("DRIVER2.3", "T3.2", [(3515, 2770), (3584, 2770)]),
+        ("R137.2", None, [(3510, 3162), (3561, 3162)]),
+    ],
+}
 
 
 # ------------------------------------------------------------- windings ----

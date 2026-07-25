@@ -97,9 +97,19 @@ def test_positions_name_parts_that_exist(design):
 
 def test_positions_lie_inside_the_scan(design):
     width, height = SCAN["size_px"]
-    for ref, (x, y) in POSITIONS.items():
-        assert 0 <= x <= width, "%s x=%d" % (ref, x)
-        assert 0 <= y <= height, "%s y=%d" % (ref, y)
+    for ref, entry in POSITIONS.items():
+        assert 0 <= entry[0] <= width, "%s x=%d" % (ref, entry[0])
+        assert 0 <= entry[1] <= height, "%s y=%d" % (ref, entry[1])
+        if len(entry) > 2:
+            assert entry[2] in ("R0", "R90", "R180", "R270"), ref
+
+
+def test_rotation_reaches_the_placement(design):
+    """R104 and the two electrolytics stand on end above their grounds."""
+    placement = ScanPlacer().place(design)
+    assert placement.rot["R104"] == "R270"
+    assert placement.rot["C56"] == "R270"
+    assert placement.rot["R73"] == "R0"
 
 
 def test_positions_belong_to_one_sheet_so_far(design):
@@ -129,7 +139,28 @@ def test_fit_box_survives_a_degenerate_span():
     assert convert(5, 5) is not None
 
 
-def test_wires_slot_is_reserved_but_unused():
+def test_wire_runs_name_real_pins(design):
     from sd_schematic.sections import WIRES
 
-    assert WIRES == {}, "traced wire polylines are not consumed yet"
+    for net, runs in WIRES.items():
+        assert net in design.nets, "WIRES names unknown net %s" % net
+        for start, end, points in runs:
+            assert len(points) >= 2, "%s: a run needs two points" % net
+            for endpoint in (start, end):
+                if endpoint is None:
+                    continue
+                ref, pin = endpoint.rsplit(".", 1)
+                assert ref in design.parts, "%s: unknown part %s" % (net, ref)
+                assert pin in design.parts[ref]["pins"], "%s: %s has no pin %s" % (
+                    net, ref, pin)
+
+
+def test_wire_runs_are_orthogonal(design):
+    """The drawing is drafted on horizontals and verticals; keep it that way."""
+    from sd_schematic.sections import WIRES
+
+    for net, runs in WIRES.items():
+        for _, _, points in runs:
+            for (x1, y1), (x2, y2) in zip(points, points[1:]):
+                assert x1 == x2 or y1 == y2, "%s: diagonal run %s->%s" % (
+                    net, (x1, y1), (x2, y2))

@@ -107,6 +107,9 @@ class Placement:
         self.rot = {}
         self.sheet_of = {}
         self.sheets = []
+        # sheet key -> the scan-pixel to millimetre mapping used for that sheet,
+        # so transcribed wire runs can be placed in the same frame as the parts.
+        self.scan_transform = {}
 
     def add_sheet(self, key, title="", frame=None):
         sheet = Sheet(key, title, frame)
@@ -378,11 +381,13 @@ class ScanPlacer(SheetPlacer):
                 continue
 
             taken = set()
-            convert = fit_box([self.positions[r] for r in known], self.area)
+            convert = fit_box([self.positions[r][:2] for r in known], self.area)
+            placement.scan_transform[key] = convert
             for ref in known:
-                x, y = convert(*self.positions[ref])
+                entry = self.positions[ref]
+                x, y = convert(entry[0], entry[1])
                 x, y = self._free(_snap(x), _snap(y), taken)
-                placement.put(ref, x, y, key)
+                placement.put(ref, x, y, key, entry[2] if len(entry) > 2 else "R0")
 
             unknown = [r for r in auto.refs_on(key) if r not in self.positions]
             if unknown:
