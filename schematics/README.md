@@ -45,8 +45,8 @@ carry **rail symbols**. Most other connections are drawn as **real wires**;
 what the router declines falls back to **net labels**, which are electrically
 connected by name — standard EAGLE practice, and Fusion honours it.
 
-Labels on the sheet, as the work progressed: 627 → 488 (rail symbols) → **191**
-(routed wires).
+Labels on the sheet, as the work progressed: 627 → 488 (rail symbols) → **185**
+(routed wires) → **175** with the one transcribed block drawn from the scan.
 
 ### What the router does, and does not
 
@@ -54,7 +54,7 @@ A two-pin net is drawn as an elbow. A wider net whose pins share a row, or two
 neighbouring rows, gets a horizontal trunk in the channel between rows with a
 drop to each pin and a junction at every branch.
 
-It **declines** roughly 59 nets — those whose pins are scattered over three or
+It **declines** roughly 57 nets — those whose pins are scattered over three or
 more rows, or whose wires would lie along something already drawn — and those
 keep labels. That is deliberate: a router that always succeeds is one that draws
 nonsense. The build prints what it left unrouted rather than reporting silent
@@ -104,10 +104,6 @@ block at a time and every intermediate state still builds — which is what make
 To add a block: crop its region of page 30 at high zoom, read each part's centre
 in scan pixels (landscape, origin top-left, y downward), and add the entries.
 Placement never affects the netlist, so a mistake here is cosmetic.
-
-The `POSITIONS` currently in the file are **one block only and approximate** —
-read off a full-page render rather than at transcription zoom. They are a worked
-example of the mechanism, not verified data.
 
 ### Drawing the wires the draughtsman drew
 
