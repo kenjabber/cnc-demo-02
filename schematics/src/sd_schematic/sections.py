@@ -443,7 +443,8 @@ SCAN = {
 # PWM.1 comes from U9A, PWM.3 goes to R73.
 BLOCK_SIDES = {
     "PWM":     {"left": ["1", "2"], "right": ["3", "4"]},
-    "LOCKOUT": {"left": ["1", "2", "5", "6"], "right": ["3", "4"]},
+    "LOCKOUT": {"left": ["1", "2"], "right": ["3", "4"],
+                "bottom": ["5", "6"]},
     "CLOCK":   {"left": [], "right": ["1"]},
     "DRIVER1": {"left": ["1"], "right": ["2", "3", "4"]},
     "DRIVER2": {"left": ["1"], "right": ["2", "3", "4"]},
@@ -571,6 +572,9 @@ WIRES = {
 WINDINGS = {
     "T1": [["1", "2"], ["3", "4"]],
     "T2": [["1", "2", "3"], ["4", "5", "6"]],
-    "T3": [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]],
-    "T4": [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]],
+    # Primary reads 3-2-1 down the coil, not 1-2-3: on the sheet pin 3 is the
+    # top terminal. Listed the other way, DRIVER pin 2 (top) had to cross to
+    # T4 pin 3 (bottom) and every lead crossed its neighbours.
+    "T3": [["3", "2", "1"], ["4", "5", "6"], ["7", "8", "9"]],
+    "T4": [["3", "2", "1"], ["7", "8", "9"], ["4", "5", "6"]],
 }

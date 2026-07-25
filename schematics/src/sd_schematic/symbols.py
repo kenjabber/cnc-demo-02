@@ -216,10 +216,12 @@ def make_symbol(kind, pins, roles=None):
         # MODULATOR, LOCK-OUT CIRCUIT, CLOCK. Keep that, but put the name
         # inside the box the way the original does.
         sides = (roles or {}).get("sides")
+        bottom = []
         if sides:
             left = [p for p in sides.get("left", []) if p in pins]
             right = [p for p in sides.get("right", []) if p in pins]
-            rest = [p for p in pins if p not in left and p not in right]
+            bottom = [p for p in sides.get("bottom", []) if p in pins]
+            rest = [p for p in pins if p not in left + right + bottom]
             left += rest
         else:
             named = [p for p in pins if not p.isdigit()]
@@ -247,6 +249,11 @@ def make_symbol(kind, pins, roles=None):
             for i, pn in enumerate(names):
                 out.append((pn, x, top - i * pitch, "R0" if side == 0 else "R180",
                             direction))
+        # Pins the drawing brings in from underneath, spread along the bottom.
+        if bottom:
+            step = w / (len(bottom) + 1.0)
+            for i, pn in enumerate(bottom, start=1):
+                out.append((pn, -w / 2 + i * step, -h / 2 - PIN_STUB, "R90", DIR_IN))
 
     elif kind == "TP":
         out = [(pins[0], -7.62, 0.0, "R0", DIR_PAS)]

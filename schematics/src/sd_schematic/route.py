@@ -45,6 +45,17 @@ class Segment:
         self.supplies = list(supplies)    # (rail, x, y, rot)
 
 
+def label_rotation(px, ex):
+    """Which way a net label should read.
+
+    An xref label extends away from its anchor. Anchored at the end of a stub
+    that points left, a left-to-right label runs back over the part it belongs
+    to -- which is what buried R95 and the transformer pins under their own
+    net names.
+    """
+    return "R180" if ex < px else "R0"
+
+
 def pin_geometry(symbol, origin, pin, rot="R0"):
     """Return ``(px, py, ex, ey)``: the pin's connection point and stub end.
 
@@ -240,7 +251,7 @@ class TrunkRouter:
             if rail:
                 segment.supplies.append((name, ex, ey, "R0"))
             else:
-                segment.labels.append((ex, ey + 0.635, "R0"))
+                segment.labels.append((ex, ey + 0.635, label_rotation(cx, ex)))
             out.append(segment)
         return out
 
@@ -290,7 +301,7 @@ class TrunkRouter:
         if not segment.wires:
             return None
         if label:
-            segment.labels.append((aex, aey + 0.635, "R0"))
+            segment.labels.append((aex, aey + 0.635, label_rotation(apx, aex)))
         return segment
 
     def _route_piece(self, sheet, pinrefs, placement, sym_of, channels, label):
@@ -347,7 +358,7 @@ class TrunkRouter:
         for x in xs[1:-1]:
             segment.junctions.append((x, round(track, 3)))
         if label:
-            segment.labels.append((xs[0], track + 0.635, "R0"))
+            segment.labels.append((xs[0], track + 0.635, "R180"))
         return segment
 
     def _claim_track(self, channels, key, x1, x2, row_y):
@@ -394,7 +405,7 @@ class StubRouter:
                 if is_rail:
                     segment.supplies.append((name, ex, ey, "R0"))
                 else:
-                    segment.labels.append((ex, ey + 0.635, "R0"))
+                    segment.labels.append((ex, ey + 0.635, label_rotation(cx, ex)))
                 segments.append(segment)
             if segments:
                 routed[name] = segments
