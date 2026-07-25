@@ -231,3 +231,47 @@ def test_transformer_windings_are_centred_on_the_core(design):
     ends = [float(v) for v in
             __import__("re").findall(r'y[12]="(-?[\d.]+)"', core[0])]
     assert max(ends) >= reach, "core stops short of the top winding"
+
+
+def test_amplifier_inputs_are_inset_from_the_vertices(design):
+    """Sized to just cover its pins, the triangle puts them on its corners.
+
+    Anything joining an input then appears to hang off the corner of the
+    symbol -- which is what R104 looked like.
+    """
+    from sd_schematic.symbols import build_symbol_library
+
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
+    symbol = sym_of["U9A"]
+    roles = design.parts["U9A"]["roles"]
+    at = {e[0]: e for e in symbol["pins"]}
+
+    corner = max(abs(float(v)) for frag in symbol["body"]
+                 for v in __import__("re").findall(r'y[12]="(-?[\d.]+)"', frag))
+    for role in ("in-", "in+"):
+        assert abs(at[roles[role]][2]) < corner - 2.0, \
+            "%s sits on the triangle's vertex" % role
+
+
+def test_amplifier_rail_leads_reach_the_body(design):
+    """A supply lead that stops beside the triangle is drawn floating."""
+    import re
+
+    from sd_schematic.symbols import build_symbol_library
+
+    _, sym_of = build_symbol_library(design.parts, drawn_extents=True)
+    symbol = sym_of["U9A"]
+    roles = design.parts["U9A"]["roles"]
+    at = {e[0]: e for e in symbol["pins"]}
+
+    verticals = []
+    for frag in symbol["body"]:
+        for x1, y1, x2, y2 in re.findall(
+                r'x1="(-?[\d.]+)" y1="(-?[\d.]+)" x2="(-?[\d.]+)" y2="(-?[\d.]+)"', frag):
+            if abs(float(x1) - float(x2)) < 1e-6:
+                verticals.append((float(x1), float(y1), float(y2)))
+
+    for role in ("v+", "v-"):
+        pin = at[roles[role]]
+        assert any(abs(vx - pin[1]) < 1e-6 for vx, _, _ in verticals), \
+            "%s has no lead at its own x" % role

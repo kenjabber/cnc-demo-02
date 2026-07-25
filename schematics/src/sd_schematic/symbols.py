@@ -118,11 +118,18 @@ def make_symbol(kind, pins, roles=None):
                    (roles["in+"], here["in+"][0], here["in+"][1], "R0", DIR_IN),
                    (roles["out"], here["out"][0], here["out"][1], "R180", DIR_OUT)]
             back = min(here["in-"][0], here["in+"][0])
-            reach = max(abs(here["in-"][1]), abs(here["in+"][1])) + 1.27
-            body.append(poly([(back, -reach), (back, reach), (here["out"][0], 0.0)]))
+            apex = here["out"][0]
+            # Stand the triangle well clear of its inputs. Sized to just cover
+            # them, the pins land on the vertices, and whatever connects to an
+            # input -- R104 here -- appears to hang off the corner.
+            reach = max(abs(here["in-"][1]), abs(here["in+"][1])) * 1.45
+            body.append(poly([(back, -reach), (back, reach), (apex, 0.0)]))
             body.append(text(back + 1.0, here["in-"][1] - 1.2, "-", 1.778))
             body.append(text(back + 0.8, here["in+"][1] - 1.2, "+", 1.778))
-            rail_y = reach * 0.62
+            # A rail lead has to reach the sloping edge, not stop in mid-air
+            # beside it, so take the edge height at the lead's own x.
+            rail_x = back + (apex - back) * 0.3
+            rail_y = reach * 0.7
         else:
             out = [(roles["in-"], -10.16, 2.54, "R0", DIR_IN),
                    (roles["in+"], -10.16, -2.54, "R0", DIR_IN),
@@ -133,13 +140,13 @@ def make_symbol(kind, pins, roles=None):
             body.append(wire(7.62, 0, 10.16, 0))
             body.append(text(-6.6, 1.4, "-", 1.778))
             body.append(text(-6.9, -3.6, "+", 1.778))
-            rail_y = 3.175
+            rail_x, rail_y = 0.0, 3.175
         if "v+" in roles:
-            out.append((roles["v+"], 0.0, rail_y + 4.45, "R270", DIR_PWR))
-            body.append(wire(0, rail_y + 1.9, 0, rail_y))
+            out.append((roles["v+"], rail_x, rail_y + 4.45, "R270", DIR_PWR))
+            body.append(wire(rail_x, rail_y + 1.9, rail_x, rail_y))
         if "v-" in roles:
-            out.append((roles["v-"], 0.0, -rail_y - 4.45, "R90", DIR_PWR))
-            body.append(wire(0, -rail_y - 1.9, 0, -rail_y))
+            out.append((roles["v-"], rail_x, -rail_y - 4.45, "R90", DIR_PWR))
+            body.append(wire(rail_x, -rail_y - 1.9, rail_x, -rail_y))
         for pin in pins:
             if pin not in {p[0] for p in out}:
                 out.append((pin, -10.16, -6.35, "R0", DIR_PAS))
