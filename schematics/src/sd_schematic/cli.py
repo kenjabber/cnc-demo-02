@@ -39,7 +39,7 @@ def _routers(placement_style):
     return TrunkRouter(supply_rails=SUPPLY_RAILS)
 
 
-def build(out_dir, placement="chains"):
+def build(out_dir, placement="scan"):
     """Generate the ``.sch`` and netlist. Returns the paths written."""
     design = build_design(SECTIONS)
     router = _routers(placement)
@@ -83,13 +83,13 @@ def main(argv=None):
                         help="build the .sch, validate an existing one, or both (default)")
     parser.add_argument("-o", "--out-dir", default=DEFAULT_OUT_DIR,
                         help="where the generated files go (default: %(default)s)")
-    parser.add_argument("-p", "--placement", default="chains", choices=sorted(PLACERS),
-                        help="chains: one A3 sheet per functional block, parts ordered "
-                             "by signal chain. scan: parts placed where the original "
-                             "drawing puts them, where a position is known, the rest "
-                             "auto-placed below. sheets: refdes order. grid: the "
-                             "original single half-metre sheet with a label on every "
-                             "pin (default: %(default)s)")
+    parser.add_argument("-p", "--placement", default="scan", choices=sorted(PLACERS),
+                        help="scan: parts placed and wired as the original drawing "
+                             "has them wherever that has been transcribed, the rest "
+                             "auto-placed. chains: all nine sheets auto-placed, parts "
+                             "ordered by signal chain. sheets: refdes order, no "
+                             "routing. grid: the original single half-metre sheet with "
+                             "a label on every pin (default: %(default)s)")
     args = parser.parse_args(argv)
 
     if args.command == "validate":

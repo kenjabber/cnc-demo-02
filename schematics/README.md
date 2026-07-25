@@ -83,9 +83,15 @@ Total same-sheet wiring span, which is what that is for:
 The pages are correct, browsable and reasonably tidy, but they still do not look
 like the 1985 drawing. Keep the scan alongside it.
 
-`--placement` selects the layout: `chains` (default), `scan` (below), `sheets`
-for the same nine pages in refdes order, `grid` for the original single
-half-metre sheet with a label on every pin.
+A build emits **one** schematic, into `output/`. `--placement` chooses which
+layout it is: **`scan` (default)**, `chains` for the same nine pages
+auto-placed by signal chain, `sheets` for refdes order with no routing, `grid`
+for the original single half-metre sheet with a label on every pin.
+
+The alternatives exist for comparison and are what the tests diff against —
+`grid` still reproduces the very first output byte for byte. Point `-o` at a
+scratch directory to look at one; the committed `output/` is always the scan
+build.
 
 ### Placing parts where the drawing puts them
 
