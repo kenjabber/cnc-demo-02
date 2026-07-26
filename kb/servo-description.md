@@ -12,6 +12,15 @@ Reference document for the Hurco Hawk 5M retrofit (LinuxCNC + Mesa 7i97).
 
 Last updated: 2026-07-25
 
+**Confirmed so far:** nameplate data (§1); connector is **MS3102A-24-7P**, mate is
+**MS3106A-24-7S** (§4.2); full face layout — 16 contacts A–P, keyway at 12 o'clock, pin A
+beneath it, lettering clockwise (§4.1); **centre group fully mapped — armature on N/P,
+tachometer on M/O** (§5.3), with P positive giving counter-clockwise rotation and M
+positive when counter-clockwise (§5.4); motor runs and tach output matches nameplate within
+1% (§6 steps 2–3); belt drive, no gearbox (§7).
+
+**Remaining:** the twelve outer-ring contacts A–L (encoder, thermostat, shields).
+
 ---
 
 ## 1. Nameplate data
@@ -95,8 +104,10 @@ change). The motor's whole job is to accept current and report motion.
 That is all. Two power inputs — one big, one small. Nothing else is *commanded* at the
 motor; there are no digital inputs, no configuration, no enable line at the motor itself.
 
-**Armature polarity sets direction.** Reversing the sense of the applied voltage reverses
-shaft rotation. **Armature current sets torque**, and the drive regulates that current
+**Armature polarity sets direction.** ✅ **FACT** — confirmed on our motor: with pin **P**
+positive relative to pin **N**, the shaft turns **counter-clockwise viewed from the shaft
+end** (the face the output shaft emerges from). Reversing the supply reverses rotation.
+**Armature current sets torque**, and the drive regulates that current
 continuously — it is not a fixed voltage. During a rapid acceleration the drive may push
 toward the 70.2 A peak for a short interval; during steady cutting it settles far below
 the 16.4 A continuous limit.
@@ -110,7 +121,7 @@ drive. This is normal and expected, and is why the drive has a regen/shunt provi
 | Output | Nature | Scaling | Consumed by |
 |---|---|---|---|
 | **Shaft torque / rotation** | Mechanical | ≈ 2.70 lb-in per amp | Timing belt → ballscrew → table |
-| **Tachometer voltage** | Analog DC, bipolar | 7.00 V per 1000 RPM | SD1525 velocity loop |
+| **Tachometer voltage** | Analog DC, bipolar | 7.00 V per 1000 RPM, M positive w.r.t. O when CCW | SD1525 velocity loop |
 | **Encoder A / /A** | Differential square wave | 2500 cycles/rev | Mesa 7i97 → LinuxCNC |
 | **Encoder B / /B** | Differential square wave, 90° from A | 2500 cycles/rev | Mesa 7i97 → LinuxCNC |
 | **Encoder Z / /Z** | Differential index pulse | 1 per rev | LinuxCNC homing |
@@ -228,29 +239,105 @@ Reference: LinuxCNC Forum, "Hurco Hawk 5M Retrofit w/ existing motors" (thread 3
 
 ✅ **FACT** — observed on our motor:
 
-- Single circular metal (MS / Cannon-style) connector, 16 pins
-- 12 pins evenly spaced around the outer circle
-- 4 pins in the centre
-- Of the centre 4, **2 are noticeably larger diameter**
-- Pins lettered A through P
+- **MS3102A-24-7P** male (pin) bulkhead receptacle on the motor body, four-bolt square
+  flange; insert moulded **CANNON** (§4.2)
+- 16 contacts: **12 in the outer ring, 4 in the centre**
+- Of the centre 4, **2 are noticeably larger diameter** — N and P
+- Contacts lettered **A through P**, all 16 letters, I and O included
+- **Keyway at the 12 o'clock position**
 
-❓ **UNKNOWN — resolve first, it changes everything downstream:**
+### 4.1 Face layout
 
-MIL-spec (MIL-DTL-5015) inserts conventionally **skip the letters I and O** to avoid
-confusion with 1 and 0. A–P skipping I and O gives only **14** positions, not 16.
+✅ **FACT** — from `docs/servo-connector.jpg`.
 
-So one of the following is true, and we do not yet know which:
+![Motor connector face showing keyway and pin lettering](../docs/servo-connector.jpg)
 
-1. This is a commercial insert that does use I and O, giving a clean A…P = 16; or
-2. Two pins (most likely the two oversized ones) are marked differently, unmarked, or
-   numbered rather than lettered.
+**Lettering runs clockwise from the keyway, outer ring first (A–L), then the inner group
+(M–P).** Viewed face-on from outside the motor, looking at the pins:
 
-**Action:** inspect the insert face under magnification and record every marking verbatim,
-including which letter sits at the keyway. Log the result in §8.
+```
+                       KEYWAY
+                          ▼
+                L         A         B
 
-❓ **UNKNOWN** — Shell size and insert arrangement number. A related motor's connector was
-measured at 1.5″ OD with an 18 TPI thread, which would put it around MIL shell size 22,
-but this has not been measured on our units. Needed to source mating plugs.
+          K                                   C
+
+                          M
+       J             (P)     (N)                 D          (P) (N) = oversized
+                          O                                       = armature
+
+          I                                   E
+
+                H         G         F
+```
+
+| Ring | Contact | Clock position | Size |
+|---|---|---|---|
+| Outer | A | 12:00 (under keyway) | std |
+| Outer | B | 1:00 | std |
+| Outer | C | 2:00 | std |
+| Outer | D | 3:00 | std |
+| Outer | E | 4:00 | std |
+| Outer | F | 5:00 | std |
+| Outer | G | 6:00 | std |
+| Outer | H | 7:00 | std |
+| Outer | I | 8:00 | std |
+| Outer | J | 9:00 | std |
+| Outer | K | 10:00 | std |
+| Outer | L | 11:00 | std |
+| Inner | M | 12:00 | std |
+| Inner | **N** | 3:00 | **large** |
+| Inner | O | 6:00 | std |
+| Inner | **P** | 9:00 | **large** |
+
+**Orientation reference:** pin **A sits directly below the keyway**. This is the anchor for
+assembling the mating plug — get it wrong and the whole map rotates.
+
+⚠️ The mating MS3106A-24-7S plug (female) is **mirror-imaged**: lettering runs
+counter-clockwise from its keyway. Always confirm which half you are reading — the diagram
+above is the motor receptacle.
+
+The armature landing on N and P is a convenient mnemonic (Negative / Positive), but it is
+incidental — those are simply the letters at those two positions in the clockwise sequence.
+
+**Consequence for §5:** the two standard-size *centre* contacts are now identified as
+**M** and **O**. These are the probable tachometer pair.
+
+### 4.2 Connector identification
+
+✅ **FACT** — identified:
+
+| Half | Part number | Description |
+|---|---|---|
+| **On the motor** | **MS3102A-24-7P** | Box/wall-mount receptacle, shell size 24, insert arrangement 7, **P = pin (male) contacts** |
+| **Cable end (needed)** | **MS3106A-24-7S** | Straight plug, shell size 24, insert arrangement 7, **S = socket (female) contacts** |
+
+Amphenol or any compatible manufacturer — this is a MIL-DTL-5015 standard part, so
+Amphenol, ITT Cannon, Bendix, Matrix and others interchange. The insert on our motors is
+moulded **CANNON**.
+
+The 24-7 arrangement provides the 16 contacts in two sizes that we observe: 14 standard
+plus the 2 oversized armature contacts (N and P).
+
+**Ordering notes**
+
+🟡 **PROBABLE — verify before ordering contacts.** Arrangement 24-7 is understood to use
+**#12 contacts** for the two large positions and **#16 contacts** for the other fourteen.
+Crimp contacts are normally ordered *separately* from the shell, in the correct size and
+gender, and each size needs its own crimp tool and positioner. Confirm sizes against the
+supplier's arrangement drawing before placing the order.
+
+🟡 Current rating sanity check: #12 contacts are typically rated around 23 A continuous,
+comfortably above the motor's 16.4 A continuous armature rating. The 70.2 A peak is brief
+and intermittent, which is what the contacts are sized for. #16 contacts at roughly 13 A
+are far beyond anything the signal circuits draw.
+
+⚠️ Also specify a **backshell / cable clamp** (MS3057-series or equivalent for shell 24).
+Given the noise concerns in §7, use a shielded backshell that bonds the cable shield to
+the connector shell through 360°, not a pigtail.
+
+⚠️ **P and S are pins and sockets, not polarity.** Do not confuse the `-P` / `-S` suffix
+with the armature pin lettering. Ordering two `-P` halves is a common and annoying mistake.
 
 ---
 
@@ -272,12 +359,12 @@ but this has not been measured on our units. Needed to source mating plugs.
 
 **Confidence varies by group:**
 
-- Armature (2) — 🟡 **PROBABLE, very high.** Nothing else on this motor needs conductors
-  rated for 16.4 A continuous / 70.2 A peak.
+- Armature (2) — ✅ **FACT.** Confirmed by measurement: pins **P** and **N**, the two
+  oversized centre contacts (§5.3).
 - Encoder (8) — 🟡 **PROBABLE, very high.** A 2500 L encoder with complementary outputs
   has no other plausible conductor count.
-- Tach (2) — 🟡 **PROBABLE, high.** The nameplate confirms a tach exists; only the pin
-  positions are open.
+- Tach (2) — ✅ **FACT.** Pins **M** and **O**, confirmed by calibrated spin test
+  (§6 step 3).
 - Thermostat (2) — 🟡 **PROBABLE, moderate.** Common on Baldor DC servos of this vintage
   and the SD1525 drive has a fault input, but **not confirmed present on our motor.**
 - Shield / chassis (1–2) — 🟡 **PROBABLE, moderate.** Separate encoder-shield and
@@ -293,44 +380,80 @@ but this has not been measured on our units. Needed to source mating plugs.
 
 ### 5.2 Position grouping
 
-🟡 **PROBABLE** — the conventional split for this connector family, and the one most
-consistent with the physical layout we observe:
+| Physical position | Pins | Contents | Status | Reasoning |
+|---|---|---|---|---|
+| Centre, oversized | **N, P** | **Armature** | ✅ **FACT** | Measured and spin-tested (§6 steps 1–2) |
+| Centre, standard | **M, O** | **Tachometer** | ✅ **FACT** | Calibrated spin test (§6 step 3) |
+| Outer ring | **A–L** | **Encoder (8), thermostat and/or shields (2–4)** | 🟡 PROBABLE | Only signals remaining; low-level circuits kept away from the armature contacts |
 
-| Physical position | Count | Probable contents | Reasoning |
-|---|---|---|---|
-| Centre, oversized | 2 | **Armature A1 / A2** | Only high-current signals on the motor; contact size is the giveaway |
-| Centre, standard | 2 | **Tachometer +/−** | Grouped with armature because both serve the drive's velocity loop |
-| Outer ring | 12 | **Encoder (8), thermostat and/or shields (2–4)** | Low-level signals kept away from the armature contacts |
+**The centre group is fully resolved:** armature on the two oversized contacts (N, P) and
+the tachometer on the two standard ones (M, O). The assumed layout principle — power and
+velocity-loop signals in the centre, everything else on the outer ring — is now confirmed
+rather than inferred, which raises confidence that all twelve encoder, thermostat and
+shield conductors are on the outer ring A–L.
 
 ### 5.3 Letter-to-function assignment
 
-❓ **UNKNOWN — no assignment is recorded here on purpose.**
+**4 of 16 confirmed — the entire centre group.** No published pinout for this connector
+exists; it is absent from Baldor/ABB documentation, the M4500 catalog, and public forums,
+and multiple people have searched without success. The remaining twelve (outer ring A–L)
+are being established empirically.
 
-No pinout for this 16-pin connector has been located in Baldor/ABB documentation, the
-M4500 catalog, or public forums; multiple people have searched without success. Any letter
-map written today would be a guess, and a wrong guess destroys the encoder.
+**Do not wire from this table until the Status column reads FACT.**
 
-Fill this table in as pins are verified. **Do not wire from this table until the Status
-column reads FACT.**
+| Pin | Position | Size | Function | Status | Verified how | Date |
+|---|---|---|---|---|---|---|
+| A | outer 12:00 | std | encoder / shield / thermostat | ❓ | | |
+| B | outer 1:00 | std | encoder / shield / thermostat | ❓ | | |
+| C | outer 2:00 | std | encoder / shield / thermostat | ❓ | | |
+| D | outer 3:00 | std | encoder / shield / thermostat | ❓ | | |
+| E | outer 4:00 | std | encoder / shield / thermostat | ❓ | | |
+| F | outer 5:00 | std | encoder / shield / thermostat | ❓ | | |
+| G | outer 6:00 | std | encoder / shield / thermostat | ❓ | | |
+| H | outer 7:00 | std | encoder / shield / thermostat | ❓ | | |
+| I | outer 8:00 | std | encoder / shield / thermostat | ❓ | | |
+| J | outer 9:00 | std | encoder / shield / thermostat | ❓ | | |
+| K | outer 10:00 | std | encoder / shield / thermostat | ❓ | | |
+| L | outer 11:00 | std | encoder / shield / thermostat | ❓ | | |
+| **M** | inner 12:00 | std | **Tachometer** (positive when shaft turns CCW) | ✅ **FACT** | Calibrated spin test at 6 V and 12 V; output matched 7.00 V/kRPM and reversed with direction (§6 step 3) | 2026-07-25 |
+| **N** | inner 3:00 | **large** | **Armature −** | ✅ **FACT** | Oversized centre contact; low-Ω commutator-varying resistance to P; dynamic-braking check; powered spin test | 2026-07-25 |
+| **O** | inner 6:00 | std | **Tachometer** (reference / return for M) | ✅ **FACT** | as above | 2026-07-25 |
+| **P** | inner 9:00 | **large** | **Armature +** (positive → CCW at shaft end) | ✅ **FACT** | as above | 2026-07-25 |
 
-| Pin | Function | Status | Verified how | Date |
-|---|---|---|---|---|
-| A | | ❓ | | |
-| B | | ❓ | | |
-| C | | ❓ | | |
-| D | | ❓ | | |
-| E | | ❓ | | |
-| F | | ❓ | | |
-| G | | ❓ | | |
-| H | | ❓ | | |
-| (I?) | | ❓ | see §4 lettering question | |
-| J | | ❓ | | |
-| K | | ❓ | | |
-| L | | ❓ | | |
-| M | | ❓ | | |
-| N | | ❓ | | |
-| (O?) | | ❓ | see §4 lettering question | |
-| P | | ❓ | | |
+The Function column shows the *candidate* role from §5.2 where one exists. Those entries
+are 🟡 PROBABLE and remain ❓ in Status until measured.
+
+**4 of 16 confirmed.** All four centre contacts are now established: armature on N/P,
+tachometer on M/O.
+
+### 5.4 Rotation and polarity convention
+
+✅ **FACT** — all directions stated **viewed from the shaft end** (the face the output
+shaft emerges from):
+
+| Condition | Result |
+|---|---|
+| P positive w.r.t. N | Shaft turns **counter-clockwise** |
+| N positive w.r.t. P | Shaft turns **clockwise** |
+| Shaft turning counter-clockwise | **M positive** w.r.t. O |
+| Shaft turning clockwise | **M negative** w.r.t. O |
+
+**Armature and tach polarity are consistent with each other.** Driving P positive turns the
+shaft CCW, and CCW makes M positive. So a positive armature drive produces a positive tach
+reading on the same sense — M pairs with P, O pairs with N.
+
+⚠️ This is the relationship the SD1525 velocity loop depends on. The loop requires
+*negative* feedback: the tach signal must oppose the command. If the tach pair is landed
+backwards at the drive, the loop becomes positive feedback and the axis runs away at full
+speed the instant it is enabled (§2.6). Getting M/O the right way round at the drive
+terminals is a safety item, not a preference.
+
+❓ **UNKNOWN** — which of M / O lands on the drive's TACH+ terminal. That depends on the
+SD1525's internal sense, not on the motor. Determine from the drive manual or by careful
+low-speed test with the axis mechanically free. See §8 question 11.
+
+**Axis direction** — CCW-at-the-motor does not yet map to +X / +Y / +Z. That requires the
+belt arrangement and ballscrew hand for each axis. See §8 question 10.
 
 ---
 
@@ -338,7 +461,7 @@ column reads FACT.**
 
 Run in this order. Steps 1, 4 and 5 energize nothing.
 
-**1. Armature — identify the two oversized centre pins**
+**1. Armature — identify the two oversized centre pins** ✅ **COMPLETE — pins P and N**
 Ohmmeter across them reads a fraction of an ohm to a few ohms, and the reading shifts as
 the shaft is rotated by hand (commutator segments). Confirm by shorting the pair: the
 shaft becomes noticeably harder to turn (dynamic braking). No other pair does this.
@@ -347,7 +470,7 @@ shaft becomes noticeably harder to turn (dynamic braking). No other pair does th
 > back-drives that small generator as a motor and can damage it. Applying it to encoder
 > pins destroys the encoder instantly.
 
-**2. Powered spin test — armature only**
+**2. Powered spin test — armature only** ✅ **COMPLETE — motor spins; P positive → CCW**
 
 ✅ Valid: this is a brushed DC motor. Armature voltage alone makes it turn. No drive, no
 commutation electronics, no encoder or tach connection required. Every other pin is left
@@ -391,15 +514,39 @@ money goes into cable fabrication.
 
 *Record in §8:* supply voltage used, steady-state current draw, observed condition.
 
-**3. Tachometer**
-Meter on DC volts across candidate pairs, spin the shaft briskly by hand. At 7.00 V/kRPM
-this reads clearly and **reverses sign with direction**. Unique signature — and per §2.3
-the tach is passive, so this works with everything unpowered.
+✅ **Result (2026-07-25):** motor spins on armature power alone. **Pin P positive relative
+to pin N produces counter-clockwise rotation viewed from the shaft end.** Tested at 6 V and
+12 V. Steady-state current draw, per-motor condition and which unit(s) were tested still to
+be logged — see §8 question 9.
 
-*Better: verify against a calculated number.* With the motor running under step 2 at a
-known supply voltage, compare the candidate pair against the "expected tach output" column
-above. A pair that matches within a few percent **and** flips sign when the supply polarity
-is reversed is the tach, confirmed against arithmetic rather than a hand-spin guess.
+**3. Tachometer** ✅ **COMPLETE — pins M and O**
+
+Confirmed by calibrated spin test: the motor was driven from the armature at known supply
+voltages (step 2) and the tach output measured with the voltmeter **+ on M, − on O**.
+
+| Supply | Rotation (at shaft end) | Measured M–O | Predicted speed (V ÷ 32) | Implied speed (V<sub>tach</sub> ÷ 7.00) |
+|---|---|---|---|---|
+| 6 V | clockwise | **−1.3 V** | 188 RPM | 186 RPM |
+| 12 V | clockwise | **−2.6 V** | 375 RPM | 371 RPM |
+| 6 V | counter-clockwise | **+1.3 V** | 188 RPM | 186 RPM |
+| 12 V | counter-clockwise | **+2.6 V** | 375 RPM | 371 RPM |
+
+**Why this is conclusive, not merely suggestive:**
+
+- Output is **linear** in supply voltage — doubling 6 V to 12 V doubles 1.3 V to 2.6 V.
+- Output **reverses sign with direction** and holds the same magnitude. Nothing else on the
+  connector behaves this way.
+- Magnitudes agree with the nameplate to within ~1%. Measured ratio V<sub>tach</sub>/V<sub>supply</sub>
+  = 0.217 against a theoretical K<sub>tach</sub>/K<sub>e</sub> = 7.00/32.0 = 0.219. The ~1%
+  shortfall is exactly the small speed droop expected from armature IR drop plus bearing and
+  brush friction at no load.
+
+This single test **cross-validates three nameplate figures at once** — K<sub>e</sub> = 32.0
+V/kRPM, tach = 7.00 V/kRPM, and the pin identification — because each was predicted from
+the others before measurement.
+
+**Polarity:** M is positive with respect to O when the shaft turns **counter-clockwise**,
+which is the same direction produced by driving P positive. See §5.4.
 
 > ⚠️ Probe carefully. Meter leads slipping across adjacent pins while the armature is
 > energized is the one way this test causes damage.
@@ -467,9 +614,12 @@ and permits homing to encoder index and disabling drives without losing position
 differential encoder pairs. Keep the encoder pairs shielded and physically separated from
 armature leads for the whole cable run, or expect phantom counts.
 
-⚠️ **Before first power-on**, verify the tach per §6 step 3. A dead or reversed tach makes
-the inner velocity loop positive-feedback, and the axis runs away at full speed the moment
-it is enabled (§2.6).
+⚠️ **Tach polarity at the drive is a safety item.** The tach itself is verified good
+(§6 step 3), but the inner velocity loop needs *negative* feedback. If M and O are landed
+backwards at the SD1525, the loop becomes positive feedback and the axis runs away at full
+speed the moment it is enabled (§2.6, §5.4). Confirm the drive's expected sense before
+first power-on, and make that first test with the axis mechanically free and a hand on the
+E-stop.
 
 ---
 
@@ -477,21 +627,23 @@ it is enabled (§2.6).
 
 | # | Question | Blocks |
 |---|---|---|
-| 1 | Does the insert use I and O, or are 2 pins marked otherwise? (§4) | Any letter-based pinout |
-| 2 | Full letter-to-function map (§5.3) | Cable fabrication |
-| 3 | Shell size / insert arrangement number | Sourcing mating plugs |
+| 2 | Remaining 12 letter-to-function assignments on the outer ring A–L (§5.3) — 4 of 16 confirmed | Cable fabrication |
+| 3 | Confirm contact sizes for arrangement 24-7 (believed #12 / #16) and obtain matching crimp tooling (§4.2) | Ordering contacts, cable assembly |
 | 4 | Is a thermostat actually present, or are those positions shields? | Conductor count, drive fault wiring |
 | 5 | Encoder module make/model under rear cap | Supply voltage, output type |
 | 6 | X and Y pulley tooth counts | LinuxCNC scale |
 | 7 | Ballscrew lead | LinuxCNC scale |
 | 8 | SD1525 trimpot settings as found (velocity gain, balance, current limit) | Drive re-trim baseline |
 | 9 | Bench spin-test results per motor: supply V, steady current, condition (§6 step 2) | Motor serviceability, brush replacement |
+| 10 | Per-axis rotation sense: does CCW-at-motor give +X / +Y / +Z? (§5.4) | LinuxCNC output polarity |
+| 11 | Which of M / O lands on the SD1525 TACH+ terminal? (§5.4) | **Runaway prevention** — safety critical |
 
 ---
 
 ## Sources
 
 - `docs/servo-sticker-actual.jpg` — our motor nameplate (primary, FACT)
+- `docs/servo-connector.jpg` — connector face, keyway and pin lettering (primary, FACT)
 - `docs/servo-sticker-example.jpg` — reference nameplate, differing spec no. and encoder
 - `docs/ServoDynamics_1525.pdf` — drive manual
 - `docs/7i97tman.pdf` — Mesa 7i97 manual
